@@ -12,6 +12,28 @@
   function readLast() {
     return JSON.parse(localStorage.getItem('ted:last') || 'null');
   }
+  function history() {
+    var box = document.getElementById('backupHistory');
+    App.apiGet('/api/learning-data/backups').then(function (data) {
+      box.replaceChildren();
+      if (!data.backups.length) box.textContent = '暂无恢复前备份。';
+      data.backups.forEach(function (item) {
+        var row = document.createElement('p'), button = document.createElement('button');
+        row.textContent = new Date(item.exported_at).toLocaleString('zh-CN') + ' · ' + item.vocab_count + ' 条生词 · ' +
+          ({committed:'恢复完成',rolled_back:'已回退',prepared:'恢复未完成'}[item.status] || '未知状态') + ' ';
+        button.className = 'btn'; button.textContent = '下载备份';
+        button.onclick = function () {
+          App.apiGet('/api/learning-data/backup?id=' + encodeURIComponent(item.id)).then(function (data) {
+            downloadBackup(data.backup);
+          }).catch(function (error) { restoreStatus.textContent = error.message; });
+        };
+        row.appendChild(button); box.appendChild(row);
+      });
+      data.issues.forEach(function (issue) { var row = document.createElement('p'); row.textContent = issue; box.appendChild(row); });
+    }).catch(function (error) { box.textContent = error.message; });
+  }
+  document.getElementById('refreshHistory').onclick = history;
+  history();
   App.getVocab().then(function (entries) {
     document.getElementById('dataStats').textContent = entries.length + ' 条生词记录';
   }).catch(function (error) { status.textContent = error.message; });
@@ -95,6 +117,7 @@
     App.apiPost('/api/learning-data/restore', {text:source,mode:mode.value,last:last,token:preview.token})
       .then(function (data) {
         backupId = data.backup_id; beforeButton.hidden = false;
+        history();
         preview = null; restoreButton.hidden = true;
         var message = '已恢复 ' + data.counts.after_vocab + ' 条生词和 ' + data.counts.after_review + ' 个复习安排；恢复前备份已保存。';
         try {

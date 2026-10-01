@@ -51,7 +51,7 @@ def save_vocab(entries):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     tmp = VOCAB_FILE.with_suffix(".json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"entries": entries}, f, ensure_ascii=False, indent=2)
+        json.dump({"schema_version":1, "entries": entries}, f, ensure_ascii=False, indent=2)
     os.replace(tmp, VOCAB_FILE)
 
 
@@ -117,6 +117,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == '/api/learning-data/backups':
+            with VOCAB_LOCK, REVIEW_LOCK:
+                try:
+                    ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                    self.send_json(200, ld.backup_history(VOCAB_FILE))
+                except (OSError, ValueError) as exc:
+                    self.send_json(503, {'error':str(exc)})
+            return
         if parsed.path == '/api/learning-data/backup':
             identifier = urllib.parse.parse_qs(parsed.query).get('id', [''])[0]
             try:

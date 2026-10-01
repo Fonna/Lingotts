@@ -80,6 +80,41 @@ class LearningDataTests(unittest.TestCase):
     def backup(self):
         return ld.export_data(self.vocab, self.review, [VIDEO], {'slug':'old-folder','t':5,'title':'Talk'})
 
+    def test_legacy_individual_files_merge_and_preserve_other_data(self):
+        state = review.next_state(None, 'known')
+        for data in ({'entries':[dict(ENTRY,id='new',word='world')]}, {'words':{'world':state}}):
+            source = json.dumps(data)
+            plan = ld.plan_restore(self.vocab,self.review,[VIDEO],source,'merge')
+            self.assertIn('旧版',plan['warnings'][0])
+            identifier = ld.commit_restore(self.vocab,self.review,plan)
+            self.assertIn('hello',ld.export_data(self.vocab,self.review,[VIDEO])['review']['words'])
+            self.assertEqual(ld.backup_history(self.vocab)['backups'][0]['status'],'committed')
+            self.assertEqual(ld.load_backup(self.vocab,identifier)['format'],ld.FORMAT)
+            with self.assertRaisesRegex(ValueError,'只能合并'):
+                ld.plan_restore(self.vocab,self.review,[VIDEO],source,'replace')
+        migrated = ld.export_data(self.vocab,self.review,[VIDEO])
+        self.assertEqual(migrated['vocab']['entries'][1]['slug'],VIDEO['id'])
+        self.assertEqual(migrated['review']['words']['world'],state)
+        self.assertEqual(json.loads(self.vocab.read_text())['schema_version'],1)
+
+    def test_legacy_unknown_fields_and_versions_do_not_guess(self):
+        for data in ({'entries':[], 'schema_version':2}, {'words':{},'epoch':True},
+                     {'entries':[], 'epoch':0}, {'vocab':[]}):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                ld.migrate_backup(data,'merge')
+
+    def test_full_backup_roundtrip_preserves_schedule_location_and_history(self):
+        backup = self.backup()
+        plan = ld.plan_restore(self.vocab,self.review,[VIDEO],json.dumps(backup),'replace')
+        ld.commit_restore(self.vocab,self.review,plan)
+        restored = ld.export_data(self.vocab,self.review,[VIDEO],plan['resume']['last'])
+        for key in ('vocab','review','resume','videos'): self.assertEqual(restored[key],backup[key])
+        broken = self.root/'backups'/('b'*32)
+        broken.mkdir(); (broken/'backup.json').write_text('{bad')
+        history = ld.backup_history(self.vocab)
+        self.assertEqual(len(history['backups']),1)
+        self.assertEqual(len(history['issues']),1)
+
     def test_preview_is_read_only_and_merge_deduplicates_by_location_not_id(self):
         backup = self.backup()
         backup['vocab']['entries'][0]['id'] = 'other-id'

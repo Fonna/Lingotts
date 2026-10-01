@@ -273,14 +273,37 @@ def remap_backup(backup, current_references):
     return ['本地暂无对应视频，学习关联仍保留：' + key for key in warnings]
 
 
+def migrate_backup(data, mode):
+    """Recognize documented legacy files; never guess unknown versions/fields."""
+    if isinstance(data, dict) and data.get('format') == FORMAT:
+        return validate_backup(data)
+    if not isinstance(data, dict):
+        raise ValueError('请选择学习备份或旧版 vocab.json / review.json')
+    if mode != 'merge':
+        raise ValueError('旧版单项数据只能合并，避免清空未提供的学习记录')
+    key = 'entries' if 'entries' in data else 'words' if 'words' in data else None
+    if key is None or set(data) - ({key, 'schema_version', 'epoch'} if key == 'words' else {key, 'schema_version'}):
+        raise ValueError('旧格式不受支持，请选择原始 vocab.json 或 review.json')
+    if 'schema_version' in data and (type(data['schema_version']) is not int or data['schema_version'] != 1):
+        raise ValueError('旧数据版本不受支持')
+    if 'epoch' in data and (type(data['epoch']) is not int or data['epoch'] < 0):
+        raise ValueError('旧复习数据恢复代次无效')
+    vocab = validate_vocab({'entries':data[key]}) if key == 'entries' else {'entries':[]}
+    review = validate_review({'words':data[key]}) if key == 'words' else {'words':{}}
+    # Stable migration timestamp keeps preview/restore identical; original dates stay intact.
+    return {'format':FORMAT, 'schema_version':VERSION, 'exported_at':'1970-01-01T00:00:00Z',
+            'vocab':vocab, 'review':review, 'resume':{'last':None}, 'videos':[],
+            'warnings':['已识别旧版单项数据；仅合并提供的记录，保留其他学习数据。原文件没有整套导出时间。']}
+
+
 def plan_restore(vocab_path, review_path, records, source, mode, last=None):
     if mode not in ('merge', 'replace'):
         raise ValueError('请选择合并或覆盖模式')
     if not isinstance(source, str) or len(source.encode('utf-8')) > MAX_BYTES:
         raise ValueError('备份必须是最多 16 MiB 的 JSON 文本')
-    incoming = validate_backup(json_loads(source.lstrip('\ufeff')))
+    incoming = migrate_backup(json_loads(source.lstrip('\ufeff')), mode)
     current = export_data(vocab_path, review_path, records, last)
-    warnings = remap_backup(incoming, current['videos'])
+    warnings = incoming['warnings'] + remap_backup(incoming, current['videos'])
     duplicates, id_conflicts, review_kept = 0, 0, 0
     if mode == 'replace':
         vocab, states = incoming['vocab'], incoming['review']
@@ -414,3 +437,20 @@ def load_backup(vocab_path, identifier):
         raise ValueError('备份路径超出数据目录')
     if not path.is_file(): raise ValueError('恢复前备份不存在')
     return validate_backup(json_loads(path.read_text(encoding='utf-8')))
+
+
+def backup_history(vocab_path):
+    directory = Path(vocab_path).parent / 'backups'
+    result, issues = [], []
+    if not directory.exists(): return {'backups':result, 'issues':issues}
+    for folder in directory.iterdir():
+        if not re.fullmatch(r'[a-f0-9]{32}', folder.name) or not folder.is_dir(): continue
+        try:
+            backup = load_backup(vocab_path, folder.name)
+            journal = json_loads((folder/'transaction.json').read_text(encoding='utf-8'))
+            result.append({'id':folder.name, 'exported_at':backup['exported_at'],
+                           'vocab_count':len(backup['vocab']['entries']), 'status':journal['status']})
+        except (OSError, ValueError, KeyError, TypeError):
+            issues.append('无法读取备份：' + folder.name)
+    result.sort(key=lambda item:(item['exported_at'], item['id']), reverse=True)
+    return {'backups':result, 'issues':issues}

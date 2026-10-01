@@ -123,6 +123,8 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 
 恢复时选择备份 JSON（最多 16 MiB），选择“合并”或“覆盖”，先点击“预览恢复内容”，核对数量与提示后再确认。合并保留本地同词同视频同位置（相差小于 0.5 秒）的生词，追加其他记录；生词 ID 冲突会重新分配。复习安排保留较新评分，时间相同保留本地；续播已有本地位置时保留。覆盖完整替换这三类数据，需要勾选覆盖确认；备份无续播位置时清空当前位置。
 
+旧版 `vocab.json`（entries 列表）或 `review.json`（words 对象）可直接选择导入，只支持合并，避免单项文件清空其他数据。旧日期、评分和未知视频关联保留；未知字段与未来版本拒绝处理。原文件无需事先改写，下一次保存或恢复会写入数据版本。自动备份可在页面底部“恢复前备份历史”下载，刷新页面后仍可访问；损坏备份单独提示。
+
 写入前在 `data/backups/<编号>/` 保存恢复前的完整备份和文件事务记录，该目录不提交到 Git。写入失败回退原文件；进程中断后在下一次读取学习数据时回退未完成事务，检测到手工修改则停止并保留文件。预览后记录变化会拒绝恢复并要求重新预览。恢复后旧复习卡需刷新才可评分，评级与到期时间保留。恢复成功后可下载恢复前备份，再按相同流程恢复原状态。
 
 目录 API 的 `transcript_status` 由当前文件推导：`missing`（待转录）或 `ready`（已就绪），不写入第二份状态清单。缺失字幕时 `/api/transcript` 返回空片段列表和待转录状态，播放器与转录页给出明确提示。
@@ -142,6 +144,7 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 | POST `/api/learning-data/export` | `{last:当前浏览器续播记录或null}` 生成版本化学习备份 |
 | POST `/api/learning-data/preview` / `/api/learning-data/restore` | `{text:备份原文,mode:merge或replace,last,token?}` 校验预览与确认恢复 |
 | GET `/api/learning-data/backup?id=<编号>` | 下载指定恢复前备份 |
+| GET `/api/learning-data/backups` | 自动备份历史及损坏提示 |
 
 ```powershell
 python -m unittest discover -s tests -v
