@@ -117,7 +117,7 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 
 ## 学习数据备份
 
-打开导航中的“学习数据”，点击“下载 JSON 备份”。备份使用 `format: tedlib-learning-data`、`schema_version: 1`，包含生词与原句出处、完整复习安排、当前浏览器续播位置，以及视频 ID/旧别名映射。导出不改写现有记录；媒体、字幕、本地词典和 AI 缓存不包含在学习备份中。
+打开导航中的“学习数据”，点击“下载 JSON 备份”。备份使用 `format: tedlib-learning-data`、`schema_version: 2`，包含生词与原句出处、完整复习安排、当前浏览器续播位置、片段进度，以及视频 ID/旧别名映射。导出不改写现有记录；媒体、字幕、本地词典和 AI 缓存不包含在学习备份中。仍可恢复 v1 备份：该旧备份未包含片段活动，保留本地片段进度并明确提示。
 
 已知旧视频目录关联在备份中转换为固定 ID；未找到的视频关联和暂无生词对应的复习安排仍保留，并给出提示。文件损坏、未知版本和非法记录会阻止导出，避免生成看似完整的空备份。
 
@@ -130,6 +130,10 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 目录 API 的 `transcript_status` 由当前文件推导：`missing`（待转录）或 `ready`（已就绪），不写入第二份状态清单。缺失字幕时 `/api/transcript` 返回空片段列表和待转录状态，播放器与转录页给出明确提示。
 
 ## API 与验证
+
+“分段精听”自动将有字幕的视频按原文时间戳划分为约 1–3 分钟的学习单元（短视频/零散末段可能更短）。切换盲听/英文字幕保留位置，点击原句跳转；支持片段循环、0.5–2× 速度，空格、左右箭头、S/L 快捷键。输入框和按钮获得焦点时保持原有键盘行为。
+
+勾选实际完成的“盲听→对照字幕→循环难句→再次盲听”，记录理解笔记，点击“保存片段进度”保存位置、速度、循环与步骤。刷新恢复最近片段；学习进度存于 `data/learning.json`，包含在整套备份中，三文件事务共同回退。字幕内容或时间变化会生成新片段版本，旧进度仍保留；多页面同时保存会拒绝旧版本，要求刷新。待转录视频仍可观看，补字幕后自动启用练习。
 
 | API | 用途 |
 | --- | --- |
@@ -145,6 +149,7 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 | POST `/api/learning-data/preview` / `/api/learning-data/restore` | `{text:备份原文,mode:merge或replace,last,token?}` 校验预览与确认恢复 |
 | GET `/api/learning-data/backup?id=<编号>` | 下载指定恢复前备份 |
 | GET `/api/learning-data/backups` | 自动备份历史及损坏提示 |
+| GET `/api/study?video=<id>` / POST `/api/study/progress` | 自动片段与版本化精听进度 |
 
 ```powershell
 python -m unittest discover -s tests -v

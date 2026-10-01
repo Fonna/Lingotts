@@ -5,6 +5,7 @@
   var NAV_LINKS = [
     { href: 'index.html', label: '🎧 学习中心' },
     { href: 'review.html', label: '🗂️ 复习' },
+    { href: 'study.html', label: '分段精听' },
     { href: 'library.html', label: '📚 视频库' },
     { href: 'vocab.html', label: '📝 生词本' },
     { href: 'manage.html', label: '内容管理' },

@@ -33,6 +33,7 @@ desktop.ini
 output/playwright/
 data/analysis_cache.json
 data/backups/
+data/learning.json
 
 # 不应入仓的本地文件
 .env

@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>分段精听 · TED Learner</title><link rel="stylesheet" href="./assets/common.css"><link rel="stylesheet" href="./assets/study.css"></head>
+<body><main class="page"><h1 class="page-title">分段精听</h1><p class="page-sub">盲听、核对、循环难句，再听一次。每个片段可随时保存续学。</p>
+<section class="panel study-panel"><label>选择视频<select id="studyVideo" aria-label="选择视频"></select></label><label>选择片段<select id="studyClip" aria-label="选择片段"></select></label><p id="studyInfo"></p><p id="studyStatus" role="status" aria-live="polite">正在加载…</p></section>
+<section class="panel study-panel" id="studyWorkspace" hidden><h2 id="clipTitle"></h2><video id="studyMedia" controls preload="metadata" playsinline></video>
+<div class="study-controls"><button class="btn" id="studyPlay">播放 / 暂停</button><button class="btn" id="studyMode" aria-pressed="false">显示英文字幕</button><button class="btn" id="studyLoop" aria-pressed="false">片段循环：关</button><label>速度<select id="studySpeed" aria-label="播放速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label></div>
+<p>快捷键：空格播放/暂停，←/→ 跳 5 秒，S 切换字幕，L 切换循环。在输入框操作时不触发快捷键。</p>
+<div id="studyTranscript" hidden></div><label class="study-note">盲听理解 / 难点笔记<textarea id="studyNote" maxlength="2000" rows="3" placeholder="先记下听到的意思，再对照原文"></textarea></label>
+<fieldset class="study-steps"><legend>我已完成的步骤（按实际学习勾选）</legend><label><input type="checkbox" value="blind">盲听并记录理解</label><label><input type="checkbox" value="subtitles">对照英文字幕</label><label><input type="checkbox" value="loop">循环难句</label><label><input type="checkbox" value="relisten">再次盲听</label></fieldset>
+<button class="btn btn-primary" id="saveStudy">保存片段进度</button><p id="studySaveStatus" role="status" aria-live="polite"></p><a id="studySource" class="btn">打开完整播放器查词</a>
+</section></main><script src="./assets/common.js"></script><script src="./assets/study.js"></script></body></html>

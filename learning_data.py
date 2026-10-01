@@ -10,13 +10,14 @@ import hashlib
 import os
 import tempfile
 import uuid
+import study_learning as sl
 from pathlib import Path
 
 from review_schedule import RATINGS, parse_due, load_epoch
 from word_lookup import normalize_word
 
 FORMAT = 'tedlib-learning-data'
-VERSION = 1
+VERSION = 2
 MAX_ITEMS = 10000
 MAX_BYTES = 16 * 1024 * 1024
 
@@ -56,8 +57,8 @@ def read_collection(path, key):
     data = json_loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(data, dict) or set(data) - ({key, 'schema_version', 'epoch'} if key == 'words' else {key, 'schema_version'}):
         raise ValueError(f'{path.name} 的数据结构不受支持')
-    version = data.get('schema_version', VERSION)
-    if type(version) is not int or version != VERSION:
+    version = data.get('schema_version', 1)
+    if type(version) is not int or version != 1:
         raise ValueError(f'{path.name} 的数据版本不受支持')
     if key == 'words' and (type(data.get('epoch', 0)) is not int or data.get('epoch', 0) < 0):
         raise ValueError('复习数据的恢复代次无效')
@@ -205,6 +206,7 @@ def export_data(vocab_path, review_path, records, last=None):
             'exported_at': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
             'vocab': vocab, 'review': review, 'resume': {'last': last},
             'videos': references, 'warnings': warnings}
+    result['learning'] = sl.load(vocab_path)
     if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode('utf-8')) > MAX_BYTES:
         raise ValueError('整套备份超过 16 MiB，无法处理')
     return result
@@ -213,9 +215,11 @@ def export_data(vocab_path, review_path, records, last=None):
 def validate_backup(data):
     if not isinstance(data, dict) or data.get('format') != FORMAT:
         raise ValueError('请选择 TedLib 学习备份 JSON')
-    if type(data.get('schema_version')) is not int or data['schema_version'] != VERSION:
+    if type(data.get('schema_version')) is not int or data['schema_version'] not in (1, VERSION):
         raise ValueError('备份版本不受支持，请使用相同或更新版本的程序')
-    if set(data) != {'format', 'schema_version', 'exported_at', 'vocab', 'review', 'resume', 'videos', 'warnings'}:
+    fields = {'format', 'schema_version', 'exported_at', 'vocab', 'review', 'resume', 'videos', 'warnings'}
+    if data['schema_version'] == 2: fields.add('learning')
+    if set(data) != fields:
         raise ValueError('备份字段不完整或不受支持')
     if not parse_due(data['exported_at']):
         raise ValueError('备份导出时间无效')
@@ -229,12 +233,14 @@ def validate_backup(data):
     result['review'] = validate_review(data['review'])
     result['resume']['last'] = validate_last(data['resume']['last'])
     result['videos'] = validate_references(data['videos'])
+    result['learning'] = sl.validate(data['learning']) if data['schema_version'] == 2 else sl.empty()
+    result['schema_version'] = VERSION
     return result
 
 
 def fingerprint(vocab_path, review_path, records, last):
     digest = hashlib.sha256()
-    for path in (Path(vocab_path), Path(review_path)):
+    for path in (Path(vocab_path), Path(review_path), sl.path_for(vocab_path)):
         digest.update(b'present:' + path.read_bytes() if path.exists() else b'missing:')
         digest.update(b'\x00')
     digest.update(json.dumps([video_references(records), validate_last(last)], sort_keys=True,
@@ -293,7 +299,7 @@ def migrate_backup(data, mode):
     # Stable migration timestamp keeps preview/restore identical; original dates stay intact.
     return {'format':FORMAT, 'schema_version':VERSION, 'exported_at':'1970-01-01T00:00:00Z',
             'vocab':vocab, 'review':review, 'resume':{'last':None}, 'videos':[],
-            'warnings':['已识别旧版单项数据；仅合并提供的记录，保留其他学习数据。原文件没有整套导出时间。']}
+            'warnings':['已识别旧版单项数据；仅合并提供的记录，保留其他学习数据。原文件没有整套导出时间。'], 'learning':sl.empty()}
 
 
 def plan_restore(vocab_path, review_path, records, source, mode, last=None):
@@ -301,7 +307,9 @@ def plan_restore(vocab_path, review_path, records, source, mode, last=None):
         raise ValueError('请选择合并或覆盖模式')
     if not isinstance(source, str) or len(source.encode('utf-8')) > MAX_BYTES:
         raise ValueError('备份必须是最多 16 MiB 的 JSON 文本')
-    incoming = migrate_backup(json_loads(source.lstrip('\ufeff')), mode)
+    raw = json_loads(source.lstrip('\ufeff'))
+    has_learning = isinstance(raw,dict) and raw.get('format') == FORMAT and raw.get('schema_version') == 2
+    incoming = migrate_backup(raw, mode)
     current = export_data(vocab_path, review_path, records, last)
     warnings = incoming['warnings'] + remap_backup(incoming, current['videos'])
     duplicates, id_conflicts, review_kept = 0, 0, 0
@@ -341,13 +349,15 @@ def plan_restore(vocab_path, review_path, records, source, mode, last=None):
                 review_kept += 1
         restored_last = current['resume']['last'] or incoming['resume']['last']
     validate_vocab(vocab); validate_review(states)
+    learning = (incoming['learning'] if mode == 'replace' else sl.merge(current['learning'],incoming['learning'])) if has_learning else current['learning']
+    if not has_learning: warnings.append('此旧备份不含片段学习活动，保留本地片段进度。')
     token_data = json.dumps([source, mode, fingerprint(vocab_path, review_path, records, last)], ensure_ascii=False).encode('utf-8')
     token = hashlib.sha256(token_data).hexdigest()
     return {'token':token, 'mode':mode, 'warnings':warnings, 'exported_at':incoming['exported_at'],
             'counts':{'before_vocab':len(current['vocab']['entries']), 'incoming_vocab':len(incoming['vocab']['entries']),
                       'after_vocab':len(vocab['entries']), 'after_review':len(states['words']),
                       'duplicates':duplicates, 'id_conflicts':id_conflicts, 'review_kept':review_kept},
-            'resume':{'last':restored_last}, 'vocab':vocab, 'review':states, 'before':current}
+            'resume':{'last':restored_last}, 'vocab':vocab, 'review':states, 'learning':learning, 'before':current}
 
 
 def atomic_write(path, data):
@@ -383,15 +393,18 @@ def recover_pending(vocab_path, review_path):
     journal_path = directory / identifier / 'transaction.json'
     journal = json_loads(journal_path.read_text(encoding='utf-8'))
     if (not isinstance(journal, dict) or set(journal) != {'status','before','after'} or
-            any(not isinstance(journal.get(key), dict) or set(journal[key]) != {'vocab','review'}
+            any(not isinstance(journal.get(key), dict) or set(journal[key]) not in ({'vocab','review'}, {'vocab','review','learning'})
                 for key in ('before','after'))):
         raise ValueError('恢复事务内容无效，请保留备份并检查数据')
+    if set(journal['before']) != set(journal['after']): raise ValueError('恢复事务文件不匹配')
+    paths = [('vocab',vocab_path), ('review',review_path)]
+    if 'learning' in journal['before']: paths.append(('learning',sl.path_for(vocab_path)))
     if journal.get('status') == 'prepared':
-        for name, path in [('vocab',vocab_path), ('review',review_path)]:
+        for name, path in paths:
             present = encoded_file(path)
             if present not in (journal['before'][name], journal['after'][name]):
                 raise ValueError('未完成恢复后的文件已被手工修改，请先保留文件并处理恢复前备份')
-        for name, path in [('vocab',vocab_path), ('review',review_path)]:
+        for name, path in paths:
             restore_encoded(path, journal['before'][name])
         journal['status'] = 'rolled_back'
         atomic_write(journal_path, json.dumps(journal).encode('utf-8'))
@@ -407,8 +420,12 @@ def commit_restore(vocab_path, review_path, plan):
     directory.mkdir(parents=True)
     payloads = {'vocab':json.dumps(dict(schema_version=1, **plan['vocab']), ensure_ascii=False, allow_nan=False).encode('utf-8'),
                 'review':json.dumps(dict(schema_version=1, epoch=load_epoch(review_path) + 1, **plan['review']), ensure_ascii=False, allow_nan=False).encode('utf-8')}
+    learning = copy.deepcopy(plan['learning'])
+    learning['version'] = sl.load(vocab_path)['version'] + 1
+    payloads['learning'] = json.dumps(sl.validate(learning),ensure_ascii=False,allow_nan=False).encode('utf-8')
     journal = {'status':'prepared', 'before':{'vocab':encoded_file(vocab_path),'review':encoded_file(review_path)},
                'after':{key:base64.b64encode(value).decode('ascii') for key, value in payloads.items()}}
+    journal['before']['learning'] = encoded_file(sl.path_for(vocab_path))
     atomic_write(directory/'backup.json', json.dumps(plan['before'], ensure_ascii=False, allow_nan=False).encode('utf-8'))
     atomic_write(directory/'transaction.json', json.dumps(journal).encode('utf-8'))
     pending = directory.parent/'pending.json'
@@ -416,6 +433,7 @@ def commit_restore(vocab_path, review_path, plan):
     try:
         atomic_write(vocab_path, payloads['vocab'])
         atomic_write(review_path, payloads['review'])
+        atomic_write(sl.path_for(vocab_path),payloads['learning'])
         journal['status'] = 'committed'
         atomic_write(directory/'transaction.json', json.dumps(journal).encode('utf-8'))
     except OSError:

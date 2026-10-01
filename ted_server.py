@@ -6,6 +6,7 @@ import video_catalog as vc
 from pronunciation import PronunciationError, speech_audio
 import learning_data as ld
 import hmac
+import study_learning as sl
 
 BASE_DIR = Path(__file__).parent.resolve()
 MEDIA_DIR = BASE_DIR.parent / "TED"
@@ -117,6 +118,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == '/api/study':
+            key = urllib.parse.parse_qs(parsed.query).get('video',[''])[0]
+            try:
+                with VOCAB_LOCK, REVIEW_LOCK, CATALOG_LOCK:
+                    ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                    video = vc.resolve_video(key,vc.catalog(CATALOG_DIR,MEDIA_DIR)['videos'])
+                    if not video: raise ValueError('视频不存在或目录有错误')
+                    units = sl.clips(video['id'],vc.transcript_segments(video,MEDIA_DIR))
+                    data = sl.load(VOCAB_FILE)
+                    self.send_json(200,{'video':video,'clips':units,'learning':data})
+            except (OSError,ValueError) as exc: self.send_json(400,{'error':str(exc)})
+            return
         if parsed.path == '/api/learning-data/backups':
             with VOCAB_LOCK, REVIEW_LOCK:
                 try:
@@ -297,7 +310,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos") or parsed.path.startswith('/api/learning-data/'):
+        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos", '/api/study/progress') or parsed.path.startswith('/api/learning-data/'):
             content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             if content_type != "application/json":
                 self.send_json(415, {"error": "Content-Type must be application/json"})
@@ -308,6 +321,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if origin and origin not in allowed:
                 self.send_json(403, {"error": "cross-origin API request denied"})
                 return
+        if parsed.path == '/api/study/progress':
+            request = self.read_json_body(strict=True)
+            if request is None: self.send_json(400,{'error':'片段请求格式无效'}); return
+            try:
+                with VOCAB_LOCK, REVIEW_LOCK, CATALOG_LOCK:
+                    ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                    video = vc.resolve_video(request.get('video'),vc.catalog(CATALOG_DIR,MEDIA_DIR)['videos'])
+                    if not video: raise ValueError('视频不存在')
+                    units = sl.clips(video['id'],vc.transcript_segments(video,MEDIA_DIR))
+                    clip = next((unit for unit in units if unit['id'] == request.get('clip')),None)
+                    if not clip: raise ValueError('字幕或片段已变化，请刷新后重新选择；旧进度保留')
+                    data = sl.progress(sl.load(VOCAB_FILE),clip,request)
+                    sl.save(VOCAB_FILE,data)
+                    self.send_json(200,{'learning':data})
+            except (ValueError,OSError) as exc: self.send_json(409,{'error':str(exc)})
+            return
         if parsed.path in ('/api/learning-data/preview', '/api/learning-data/restore'):
             data = self.read_json_body(ld.MAX_BYTES * 2 + 4096, strict=True)
             if data is None or set(data) - {'text', 'mode', 'last', 'token'}:

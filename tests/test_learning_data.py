@@ -33,7 +33,7 @@ class LearningDataTests(unittest.TestCase):
         last = {'slug':'old-folder', 't':20.5, 'title':'Talk'}
         data = ld.export_data(self.vocab, self.review, [VIDEO], last)
         self.assertEqual(data['format'], ld.FORMAT)
-        self.assertEqual(data['schema_version'], 1)
+        self.assertEqual(data['schema_version'], 2)
         self.assertEqual(data['vocab']['entries'][0]['slug'], VIDEO['id'])
         self.assertEqual(data['resume']['last']['slug'], VIDEO['id'])
         self.assertEqual(last['slug'], 'old-folder')
