@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学习中心 · TED Learner</title>
+<link rel="stylesheet" href="./assets/common.css">
+<style>
+.hero {
+  margin-bottom: 26px;
+}
+.hero .greet {
+  font-size: 0.85rem; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+.hero h1 {
+  font-family: Georgia, serif;
+  font-size: 2.4rem; font-weight: 400;
+  margin: 0 0 6px;
+}
+.hero p {
+  color: var(--text-secondary);
+  font-size: 0.95rem; margin: 0;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 30px;
+}
+.dash-card {
+  padding: 22px;
+  display: flex; flex-direction: column;
+}
+.dash-card .dc-label {
+  font-size: 0.72rem; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 1.6px;
+  margin-bottom: 12px; font-weight: 600;
+}
+.dash-card .dc-title {
+  font-family: Georgia, serif;
+  font-size: 1.25rem; line-height: 1.35;
+  margin-bottom: 6px;
+}
+.dash-card .dc-sub {
+  font-size: 0.83rem; color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+.dash-card .dc-actions {
+  margin-top: auto;
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.dash-card .dc-big {
+  font-family: Georgia, serif;
+  font-size: 2.2rem; line-height: 1.1;
+}
+.pos-chip {
+  display: inline-block;
+  font-size: 0.75rem; color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 10px; border-radius: 10px;
+  margin-bottom: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-label {
+  font-size: 0.78rem; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 1.8px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.recent-list {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.recent-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 20px;
+  text-decoration: none; color: var(--text);
+}
+.recent-item:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.recent-item .r-word {
+  font-family: Georgia, serif;
+  font-size: 1.1rem;
+  flex: 0 0 150px;
+}
+.recent-item .r-sentence {
+  font-size: 0.83rem; color: var(--text-secondary);
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-item .r-pos {
+  font-size: 0.75rem; color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .dash-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="hero">
+    <div class="greet" id="greet"></div>
+    <h1>学习中心</h1>
+    <p>听 TED、标记生词、随时回到原句复习</p>
+  </div>
+
+  <div class="dash-grid">
+    <!-- Continue -->
+    <div class="panel dash-card">
+      <div class="dc-label">🎧 继续学习</div>
+      <div id="continueBox">
+        <div class="dc-sub" style="margin-bottom:0">还没有学习记录，去视频库挑一个开始</div>
+      </div>
+    </div>
+
+    <!-- Review -->
+    <div class="panel dash-card">
+      <div class="dc-label">🗂️ 今日待复习</div>
+      <div class="dc-big" id="reviewDue">–</div>
+      <div class="dc-sub" id="reviewSub">个单词等着复习</div>
+      <div class="dc-actions">
+        <a class="btn btn-primary" href="./review.html">开始复习</a>
+      </div>
+    </div>
+
+    <!-- Vocab -->
+    <div class="panel dash-card">
+      <div class="dc-label">📝 生词</div>
+      <div class="dc-big" id="vocabTotal">–</div>
+      <div class="dc-sub" id="vocabSub">个生词记录</div>
+      <div class="dc-actions">
+        <a class="btn btn-primary" href="./vocab.html">打开生词本</a>
+      </div>
+    </div>
+
+    <!-- Library -->
+    <div class="panel dash-card">
+      <div class="dc-label">📚 视频库</div>
+      <div class="dc-big" id="libraryTotal">–</div>
+      <div class="dc-sub">个 TED 演讲，含视频与音频</div>
+      <div class="dc-actions">
+        <a class="btn btn-primary" href="./library.html">浏览视频库</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">最近标记的生词</div>
+  <div class="recent-list" id="recentList">
+    <div class="empty-state"><div class="empty-icon">✨</div><div>标记的生词会出现在这里</div></div>
+  </div>
+</div>
+
+<script src="./assets/common.js"></script>
+<script>
+// ----- Greeting -----
+var h = new Date().getHours();
+var greet = h < 6 ? '夜深了' : h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
+document.getElementById('greet').textContent = greet + '，扶摇而上';
+
+// ----- Continue learning (localStorage) -----
+function renderContinue() {
+  var last = null;
+  try {
+    last = JSON.parse(localStorage.getItem('ted:last') || 'null');
+  } catch (e) {}
+  var box = document.getElementById('continueBox');
+  if (!last || !last.slug) return;
+
+  var resumeUrl = './player.html?video=' + encodeURIComponent(last.slug) +
+                  '&t=' + Math.floor(last.t || 0);
+  var restartUrl = './player.html?video=' + encodeURIComponent(last.slug);
+  box.innerHTML =
+    '<div class="dc-title">' + App.escapeHtml(last.title || last.slug) + '</div>' +
+    '<div class="pos-chip">上次听到 ' + App.fmtTime(last.t || 0) + '</div>' +
+    '<div class="dc-actions">' +
+      '<a class="btn btn-primary" href="' + resumeUrl + '">▶ 继续学习</a>' +
+      '<a class="btn" href="' + restartUrl + '">从头开始</a>' +
+    '</div>';
+}
+
+// ----- Vocab data -----
+function ctxLink(e) {
+  return './player.html?video=' + encodeURIComponent(e.slug) +
+         '&t=' + Math.floor(e.t);
+}
+
+App.getVocab().then(function (entries) {
+  document.getElementById('vocabTotal').textContent = entries.length;
+  var distinct = {};
+  entries.forEach(function (e) { distinct[e.word.toLowerCase()] = true; });
+  document.getElementById('vocabSub').textContent =
+    entries.length + ' 个记录 · ' + Object.keys(distinct).length + ' 个不同单词';
+
+  var list = document.getElementById('recentList');
+  if (entries.length === 0) return;
+
+  var recent = entries.slice().sort(function (a, b) {
+    return (b.created || '').localeCompare(a.created || '');
+  }).slice(0, 6);
+
+  var html = '';
+  recent.forEach(function (e) {
+    html += '<a class="panel recent-item" href="' + ctxLink(e) + '">' +
+      '<span class="r-word">' + App.escapeHtml(e.word) + '</span>' +
+      '<span class="r-sentence">' + App.escapeHtml(e.sentence || '') + '</span>' +
+      '<span class="r-pos">' + App.fmtTime(e.t) + '</span>' +
+    '</a>';
+  });
+  list.innerHTML = html;
+}).catch(function () {
+  document.getElementById('vocabTotal').textContent = '!';
+  document.getElementById('vocabSub').textContent = '无法连接服务器，请先启动';
+});
+
+App.getReview().then(function (data) {
+  var stats = data.stats || {};
+  document.getElementById('reviewDue').textContent = stats.due_today || 0;
+  var sub = document.getElementById('reviewSub');
+  if (!stats.total) sub.textContent = '先在字幕中标记想学的单词';
+  else if (stats.due_today) sub.textContent = '个单词今天需复习 · ' + stats.due + ' 个现在可复习';
+  else if (stats.next_due_at) sub.textContent = '下次复习：' + new Date(stats.next_due_at).toLocaleString('zh-CN');
+  else sub.textContent = '目前没有待复习单词';
+}).catch(function () {
+  document.getElementById('reviewDue').textContent = '!';
+  document.getElementById('reviewSub').textContent = '无法加载复习安排';
+});
+
+App.apiGet('/api/videos').then(function (data) {
+  document.getElementById('libraryTotal').textContent = data.videos.length;
+}).catch(function () { document.getElementById('libraryTotal').textContent = '!'; });
+
+renderContinue();
+</script>
+</body>
+</html>

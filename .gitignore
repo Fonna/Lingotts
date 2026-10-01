@@ -1,0 +1,41 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# uv
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / temp
+*.log
+*.err
+*.tmp
+
+# 测试产物
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.playwright-cli/
+output/playwright/
+data/analysis_cache.json
+
+# 不应入仓的本地文件
+.env
+.env.local
+
+# 内部规划与进度文档仅保留在本地
+docs/roadmap.md

@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TED Talk Player</title>
+<link rel="stylesheet" href="./assets/common.css">
+<style>
+/* ===== Dual Theme Variables ===== */
+:root {
+  --bg: #faf7f2;
+  --bg-secondary: #f3efe8;
+  --card-bg: #fffdf8;
+  --card-hover: #fffefc;
+  --text: #3d2e1f;
+  --text-secondary: #7a6b5c;
+  --text-tertiary: #a89885;
+  --accent: #d4784c;
+  --accent-hover: #c06840;
+  --accent-glow: rgba(212, 120, 76, 0.12);
+  --accent-soft: rgba(212, 120, 76, 0.08);
+  --border: #e8dfd3;
+  --border-hover: #d4c8b6;
+  --tag-bg: #f3efe8;
+  --tag-text: #8b7355;
+  --shadow-sm: 0 1px 3px rgba(61, 46, 31, 0.06);
+  --shadow-md: 0 4px 16px rgba(61, 46, 31, 0.08);
+  --shadow-lg: 0 12px 40px rgba(61, 46, 31, 0.10);
+  --grain-opacity: 0.03;
+  --gradient-header: linear-gradient(165deg, #f5ede0 0%, #faf7f2 40%, #efe5d8 100%);
+  --card-badge-bg: rgba(212, 120, 76, 0.1);
+  --card-badge-text: #b85d30;
+  --highlight-bg: rgba(212, 120, 76, 0.12);
+  --highlight-border: #d4784c;
+  --player-bg: #0d0d0d;
+  --player-text: #ccc;
+}
+[data-theme="cool"] {
+  --bg: #0c0e14;
+  --bg-secondary: #12151d;
+  --card-bg: #181b25;
+  --card-hover: #1c1f2a;
+  --text: #e2e4eb;
+  --text-secondary: #9398a8;
+  --text-tertiary: #62687a;
+  --accent: #8bafe0;
+  --accent-hover: #7a9fd4;
+  --accent-glow: rgba(139, 175, 224, 0.10);
+  --accent-soft: rgba(139, 175, 224, 0.06);
+  --border: #222636;
+  --border-hover: #2e3348;
+  --tag-bg: #1e2230;
+  --tag-text: #8a90a8;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --grain-opacity: 0.04;
+  --gradient-header: linear-gradient(165deg, #141820 0%, #0c0e14 40%, #10141e 100%);
+  --card-badge-bg: rgba(139, 175, 224, 0.12);
+  --card-badge-text: #8bafe0;
+  --highlight-bg: rgba(139, 175, 224, 0.12);
+  --highlight-border: #8bafe0;
+  --player-bg: #0a0a0f;
+  --player-text: #b0b5c0;
+}
+
+/* ===== Reset & Base ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  line-height: 1.65;
+  font-weight: 400;
+  transition: background 0.5s ease, color 0.5s ease;
+  -webkit-font-smoothing: antialiased;
+  display: flex; flex-direction: column;
+}
+body::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitch='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  transition: opacity 0.5s ease;
+}
+
+/* ===== Top Bar ===== */
+.topbar {
+  background: var(--gradient-header);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex; align-items: center; gap: 16px;
+  transition: background 0.5s ease, border-color 0.5s ease;
+  flex-shrink: 0;
+  position: relative; z-index: 1;
+}
+.back-btn {
+  padding: 8px 16px; border: 1px solid var(--border);
+  border-radius: 22px; background: var(--card-bg);
+  color: var(--text); cursor: pointer;
+  font-size: 0.85rem; font-weight: 500;
+  transition: all 0.3s ease;
+  font-family: sans-serif;
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap;
+}
+.back-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.video-title {
+  font-family: Georgia, serif;
+  font-size: 1.15rem; font-weight: 400;
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.theme-toggle {
+  padding: 8px 16px; border: 1px solid var(--border);
+  border-radius: 22px; background: var(--card-bg);
+  color: var(--text); cursor: pointer;
+  font-size: 0.85rem; font-weight: 500;
+  transition: all 0.3s ease;
+  font-family: sans-serif;
+  white-space: nowrap;
+}
+.theme-toggle:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* ===== Main Layout ===== */
+.main {
+  display: flex; flex: 1; min-height: 0;
+}
+.player-pane {
+  flex: 0 0 52%; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--player-bg);
+  border-right: 1px solid var(--border);
+  transition: border-color 0.5s ease;
+}
+.transcript-pane {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  transition: background 0.5s ease;
+}
+
+/* ===== Player Area ===== */
+.player-wrapper {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 32px;
+}
+.player-wrapper video,
+.player-wrapper audio {
+  max-width: 100%; max-height: 100%;
+  border-radius: 8px;
+  outline: none;
+}
+/* Audio-only: show a nice visual placeholder */
+.audio-visual {
+  text-align: center;
+  color: var(--player-text);
+}
+.audio-visual .speaker-icon {
+  font-size: 6rem; margin-bottom: 16px;
+  opacity: 0.6;
+}
+.audio-visual .audio-title {
+  font-family: Georgia, serif;
+  font-size: 1.4rem; margin-bottom: 8px;
+}
+.audio-visual .audio-hint {
+  font-size: 0.85rem; opacity: 0.5;
+}
+.player-controls-bar {
+  padding: 12px 24px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; gap: 12px;
+}
+.time-display {
+  color: var(--player-text); font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 100px;
+}
+.progress-container {
+  flex: 1; height: 4px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px; cursor: pointer;
+  position: relative;
+}
+.progress-fill {
+  height: 100%; background: var(--accent);
+  border-radius: 2px; transition: width 0.05s linear;
+}
+.play-pause-btn {
+  background: none; border: 1px solid rgba(255,255,255,0.2);
+  color: var(--player-text); width: 36px; height: 36px;
+  border-radius: 50%; cursor: pointer;
+  font-size: 1rem; display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease;
+}
+.play-pause-btn:hover { border-color: var(--accent); color: var(--accent); }
+.yt-link {
+  color: var(--player-text); text-decoration: none;
+  font-size: 0.82rem; opacity: 0.6; transition: opacity 0.2s;
+  white-space: nowrap;
+}
+.yt-link:hover { opacity: 1; color: var(--accent); }
+
+/* ===== Transcript Area ===== */
+.transcript-header {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  transition: border-color 0.5s ease;
+  flex-shrink: 0;
+}
+.transcript-header .label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.8px;
+  color: var(--text-tertiary); font-weight: 600;
+}
+.transcript-header .hint {
+  font-size: 0.72rem; color: var(--text-tertiary);
+}
+.transcript-header .lang-badge {
+  font-size: 0.7rem; background: var(--accent-soft);
+  color: var(--accent); padding: 2px 10px; border-radius: 10px;
+  font-weight: 500;
+}
+.transcript-scroll {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 16px 0;
+  scroll-behavior: smooth;
+}
+.transcript-line {
+  padding: 8px 24px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  border-left: 3px solid transparent;
+  display: flex; gap: 12px;
+  align-items: flex-start;
+}
+.transcript-line:hover {
+  background: var(--accent-soft);
+}
+.transcript-line.active {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-border);
+}
+.transcript-line .timestamp {
+  font-size: 0.75rem; color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; min-width: 56px;
+  padding-top: 2px;
+  font-weight: 500;
+}
+.transcript-line .text {
+  font-size: 0.92rem; color: var(--text);
+  line-height: 1.6;
+  transition: color 0.25s ease;
+}
+.transcript-line.active .text {
+  color: var(--accent);
+}
+.transcript-line.active .timestamp {
+  color: var(--accent);
+}
+
+/* ===== Clickable words in transcript ===== */
+.tw {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+  transition: background 0.15s ease, color 0.25s ease;
+}
+.tw:hover { background: var(--accent-soft); }
+.tw.saved {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tw.saved::after {
+  content: '★';
+  font-size: 0.58em;
+  vertical-align: super;
+  margin-left: 1px;
+}
+
+/* ===== Word popup card ===== */
+.word-popup {
+  position: fixed; z-index: 1000;
+  width: min(350px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  padding: 16px;
+  display: none;
+}
+.word-popup.show { display: block; }
+.word-popup .wp-word {
+  font-family: Georgia, serif;
+  font-size: 1.4rem; line-height: 1.2;
+}
+.word-popup .wp-meta {
+  font-size: 0.72rem; color: var(--text-tertiary);
+  margin: 4px 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+.word-popup .wp-ctx {
+  font-size: 0.8rem; color: var(--text-secondary);
+  margin: 0 0 12px;
+  border-left: 2px solid var(--border);
+  padding: 2px 0 2px 10px;
+}
+.wp-dictionary, .wp-analysis { margin: 10px 0; }
+.wp-dictionary { max-height: 220px; overflow-y: auto; }
+.wp-analyze { margin: 8px 0; }
+.wp-btn {
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent; color: var(--text);
+  font-family: inherit; font-size: 0.85rem; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.wp-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.wp-btn.on {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+
+/* ===== Loading / Error States ===== */
+.loading, .error-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; color: var(--text-secondary); gap: 12px;
+}
+.loading .spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .main { flex-direction: column; }
+  .player-pane { flex: 0 0 auto; border-right: none; border-bottom: 1px solid var(--border); }
+  .player-wrapper { padding: 16px; }
+  .video-title { font-size: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <a class="back-btn" href="./index.html">← 首页</a>
+  <div class="video-title" id="videoTitle">Loading...</div>
+  <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙 Cool</button>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+  <!-- Left: Player -->
+  <div class="player-pane" id="playerPane">
+    <div class="player-wrapper" id="playerWrapper">
+      <div class="loading"><div class="spinner"></div><div>Loading media...</div></div>
+    </div>
+    <div class="player-controls-bar" id="controlsBar" style="display:none">
+      <button class="play-pause-btn" id="playPauseBtn" onclick="togglePlay()">▶</button>
+      <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+      <div class="progress-container" id="progressContainer" onclick="seek(event)">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <a class="yt-link" id="ytLink" href="#" target="_blank" rel="noopener">🎬 YouTube</a>
+    </div>
+  </div>
+
+  <!-- Right: Transcript -->
+  <div class="transcript-pane">
+    <div class="transcript-header">
+      <span class="label">📝 Transcript</span>
+      <span class="lang-badge" id="langBadge">EN</span>
+      <span class="hint">点击单词查释义或标记生词</span>
+    </div>
+    <div class="transcript-scroll" id="transcriptScroll">
+      <div class="loading"><div class="spinner"></div><div>Loading transcript...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Word popup -->
+<div class="word-popup" id="wordPopup">
+  <div class="wp-word" id="wpWord"></div>
+  <div class="wp-meta" id="wpMeta"></div>
+  <div class="wp-ctx" id="wpCtx"></div>
+  <div class="wp-dictionary" id="wpDictionary" aria-live="polite"></div>
+  <button class="wp-btn wp-analyze" id="wpAnalyze">✨ 深度解析当前语境</button>
+  <div class="wp-analysis" id="wpAnalysis" aria-live="polite"></div>
+  <button class="wp-btn" id="wpBtn"></button>
+</div>
+
+<script src="./assets/common.js"></script>
+<script>
+// ===== Theme =====
+var body = document.body;
+var themeBtn = document.getElementById('themeBtn');
+var saved = localStorage.getItem('ted-theme');
+if (saved === 'cool') { body.dataset.theme = 'cool'; themeBtn.textContent = '☀️ Warm'; }
+
+function toggleTheme() {
+  var isWarm = body.dataset.theme === 'warm';
+  body.dataset.theme = isWarm ? 'cool' : 'warm';
+  themeBtn.textContent = isWarm ? '☀️ Warm' : '🌙 Cool';
+  localStorage.setItem('ted-theme', isWarm ? 'cool' : 'warm');
+}
+
+// ===== Parse URL param =====
+var params = new URLSearchParams(window.location.search);
+var videoParam = params.get('video');
+var videoInfo = null;
+
+// ===== Player State =====
+var mediaElement = null;
+var transcriptSegments = [];
+var currentActiveIndex = -1;
+var isVideo = false;
+var currentSlug = videoParam;
+var lastSavedAt = 0;
+
+// ===== Vocab state =====
+var vocabEntries = [];
+var vocabLoaded = false;
+
+function playerError(message) {
+  document.getElementById('videoTitle').textContent = '无法打开视频';
+  var wrapper = document.getElementById('playerWrapper');
+  wrapper.textContent = message;
+}
+if (!videoParam) playerError('请从视频库选择一个视频。');
+else App.apiGet('/api/video?video=' + encodeURIComponent(videoParam)).then(function (data) {
+  videoInfo = data.video;
+  document.getElementById('videoTitle').textContent = videoInfo.title;
+  document.title = videoInfo.title + ' — TED Player';
+  var source = document.getElementById('ytLink');
+  source.hidden = !videoInfo.youtube;
+  if (videoInfo.youtube) source.href = videoInfo.youtube;
+  initPlayer(videoInfo.id, videoInfo);
+}).catch(function (error) { playerError(error.message); });
+
+function getMedia() {
+  return mediaElement || document.querySelector('audio') || document.querySelector('video');
+}
+
+function initVocab() {
+  App.getVocab().then(function (entries) {
+    vocabEntries = entries;
+    vocabLoaded = true;
+    paintSavedWords();
+  }).catch(function () {
+    vocabLoaded = true;
+  });
+}
+
+function entryKey(slug, t, word) {
+  return slug + '|' + Math.round(t) + '|' + word.toLowerCase();
+}
+
+function findEntry(slug, t, word) {
+  for (var i = 0; i < vocabEntries.length; i++) {
+    var e = vocabEntries[i];
+    if (e.slug === slug && e.word.toLowerCase() === word.toLowerCase() &&
+        Math.abs(e.t - t) < 0.5) {
+      return e;
+    }
+  }
+  return null;
+}
+
+function paintSavedWords() {
+  if (!vocabLoaded) return;
+  var savedInVideo = {};
+  vocabEntries.forEach(function (e) {
+    if (e.slug === currentSlug) savedInVideo[e.word.toLowerCase()] = true;
+  });
+  var spans = document.querySelectorAll('.transcript-scroll .tw');
+  spans.forEach(function (s) {
+    if (savedInVideo[s.dataset.w]) s.classList.add('saved');
+    else s.classList.remove('saved');
+  });
+}
+
+// ===== Player Init =====
+function initPlayer(videoId, info) {
+  currentSlug = videoId;
+  // The catalog provides encoded media URLs and a stable learning identity.
+  var mediaPath = info.media_url;
+  var ext = info.media_file.split('.').pop().toLowerCase();
+  isVideo = (ext === 'mp4' || ext === 'webm' || ext === 'mov');
+
+  var wrapper = document.getElementById('playerWrapper');
+
+  if (isVideo) {
+    mediaElement = document.createElement('video');
+    mediaElement.controls = false;
+    mediaElement.style.maxWidth = '100%';
+    mediaElement.style.maxHeight = '100%';
+    mediaElement.style.borderRadius = '8px';
+    mediaElement.style.outline = 'none';
+    wrapper.innerHTML = '';
+    wrapper.appendChild(mediaElement);
+  } else {
+    mediaElement = document.createElement('audio');
+    wrapper.innerHTML = '<div class="audio-visual">' +
+      '<div class="speaker-icon">🎙️</div>' +
+      '<div class="audio-title">' + escapeHtml(info.title) + '</div>' +
+      '<div class="audio-hint">Audio-only · TED Talk</div>' +
+      '</div>';
+    wrapper.appendChild(mediaElement);
+  }
+
+  mediaElement.src = mediaPath;
+  mediaElement.preload = 'auto';
+
+  // Show controls
+  document.getElementById('controlsBar').style.display = 'flex';
+
+  // Events
+  mediaElement.addEventListener('timeupdate', onTimeUpdate);
+  mediaElement.addEventListener('loadedmetadata', function () {
+    updateTimeDisplay();
+    // Resume at explicit t= position (from learning center / vocab links)
+    var resumeT = parseFloat(params.get('t'));
+    if (!isNaN(resumeT)) {
+      mediaElement.currentTime = Math.max(0, resumeT);
+      lastSavedAt = resumeT;
+    }
+  });
+  mediaElement.addEventListener('play', function () {
+    document.getElementById('playPauseBtn').textContent = '⏸';
+  });
+  mediaElement.addEventListener('pause', function () {
+    document.getElementById('playPauseBtn').textContent = '▶';
+  });
+  mediaElement.addEventListener('ended', function () {
+    document.getElementById('playPauseBtn').textContent = '↺';
+  });
+  mediaElement.addEventListener('error', function (e) {
+    wrapper.innerHTML = '<div class="error-state"><div style="font-size:2rem">⚠️</div><div>Media failed to load</div><div style="font-size:0.85rem;opacity:0.6">' + escapeHtml(mediaPath) + '</div></div>';
+    document.getElementById('controlsBar').style.display = 'none';
+  });
+
+  // Progress click
+  mediaElement.addEventListener('timeupdate', updateProgress);
+
+  // Load saved words + transcript
+  initVocab();
+  loadTranscript(videoId);
+}
+
+function loadTranscript(videoId) {
+  var scroll = document.getElementById('transcriptScroll');
+  App.apiGet('/api/transcript?video=' + encodeURIComponent(videoId)).then(function (data) {
+    transcriptSegments = data.segments;
+    document.getElementById('langBadge').textContent = (data.video.language || 'en').toUpperCase();
+    renderTranscript();
+  }).catch(function (error) { scroll.textContent = '无法读取字幕：' + error.message; });
+}
+
+// Tokenize raw text, escaping each fragment separately so HTML entities stay intact.
+function tokenizeHtml(text) {
+  var re = /[A-Za-z]+(?:'[A-Za-z]+)?/g;
+  var html = '', last = 0, match;
+  while ((match = re.exec(text)) !== null) {
+    html += escapeHtml(text.slice(last, match.index));
+    var word = match[0];
+    html += '<span class="tw" data-w="' + escapeHtml(word.toLowerCase()) +
+      '">' + escapeHtml(word) + '</span>';
+    last = re.lastIndex;
+  }
+  return html + escapeHtml(text.slice(last));
+}
+
+function renderTranscript() {
+  var scroll = document.getElementById('transcriptScroll');
+  if (transcriptSegments.length === 0) {
+    scroll.innerHTML = '<div class="error-state"><div>No transcript segments found</div></div>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < transcriptSegments.length; i++) {
+    var seg = transcriptSegments[i];
+    var ts = formatTime(seg.start);
+    var textHtml = tokenizeHtml(seg.text);
+    html += '<div class="transcript-line" data-index="' + i + '" data-start="' + seg.start + '" onclick="jumpTo(' + seg.start + ')">' +
+      '<span class="timestamp">' + ts + '</span>' +
+      '<span class="text">' + textHtml + '</span>' +
+      '</div>';
+  }
+  scroll.innerHTML = html;
+  paintSavedWords();
+}
+
+function onTimeUpdate() {
+  var media = getMedia();
+  if (!media) return;
+  var currentTime = media.currentTime;
+  // Find current segment
+  var found = -1;
+  for (var i = 0; i < transcriptSegments.length; i++) {
+    if (currentTime >= transcriptSegments[i].start && currentTime < transcriptSegments[i].end) {
+      found = i;
+      break;
+    }
+  }
+
+  if (found !== currentActiveIndex) {
+    // Remove old active
+    if (currentActiveIndex >= 0) {
+      var oldEl = document.querySelector('.transcript-line[data-index="' + currentActiveIndex + '"]');
+      if (oldEl) oldEl.classList.remove('active');
+    }
+    // Set new active
+    currentActiveIndex = found;
+    if (found >= 0) {
+      var newEl = document.querySelector('.transcript-line[data-index="' + found + '"]');
+      if (newEl) {
+        newEl.classList.add('active');
+        // Auto-scroll to keep active line visible
+        newEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+  }
+
+  // Remember position for learning center (throttled to once / 3s)
+  if (currentSlug && videoInfo && currentTime - lastSavedAt >= 3) {
+    lastSavedAt = currentTime;
+    try {
+      localStorage.setItem('ted:last', JSON.stringify({
+        slug: currentSlug,
+        t: currentTime,
+        title: videoInfo.title
+      }));
+    } catch (e) {}
+  }
+
+  updateProgress();
+}
+
+function updateProgress() {
+  var media = getMedia();
+  if (!media || !media.duration) return;
+  var pct = (media.currentTime / media.duration) * 100;
+  document.getElementById('progressFill').style.width = pct + '%';
+  updateTimeDisplay();
+}
+
+function updateTimeDisplay() {
+  var media = getMedia();
+  if (!media) return;
+  var current = formatTime(media.currentTime || 0);
+  var total = formatTime(media.duration || 0);
+  document.getElementById('timeDisplay').textContent = current + ' / ' + total;
+}
+
+function formatTime(seconds) {
+  if (isNaN(seconds) || seconds < 0) return '0:00';
+  var m = Math.floor(seconds / 60);
+  var s = Math.floor(seconds % 60);
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function togglePlay() {
+  var media = getMedia();
+  if (!media) return;
+  if (media.paused || media.ended) {
+    if (media.ended) { media.currentTime = 0; }
+    media.play();
+  } else {
+    media.pause();
+  }
+}
+
+function seek(e) {
+  var media = getMedia();
+  if (!media || !media.duration) return;
+  var container = document.getElementById('progressContainer');
+  var rect = container.getBoundingClientRect();
+  var pct = (e.clientX - rect.left) / rect.width;
+  media.currentTime = pct * media.duration;
+}
+
+function jumpTo(time) {
+  var media = getMedia();
+  if (!media) return;
+  media.currentTime = time;
+  media.play();
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ===== Word popup interactions =====
+var popup = document.getElementById('wordPopup');
+var popupSpan = null;
+var popupRequestId = 0;
+
+function positionPopup(span) {
+  if (!span || !popup.classList.contains('show')) return;
+  var r = span.getBoundingClientRect();
+  var pw = popup.offsetWidth, ph = popup.offsetHeight;
+  var left = Math.min(r.left, window.innerWidth - pw - 8);
+  var top = Math.min(r.bottom + 8, window.innerHeight - ph - 8);
+  popup.style.left = Math.max(8, left) + 'px';
+  popup.style.top = Math.max(8, top) + 'px';
+}
+
+// Capture-phase: fires before the line's onclick (bubble), so the line won't jump
+document.getElementById('transcriptScroll').addEventListener('click', function (e) {
+  var target = e.target;
+  if (!target.classList || !target.classList.contains('tw')) return;
+  e.stopPropagation();
+  e.preventDefault();
+  openWordPopup(target);
+}, true);
+
+function openWordPopup(span) {
+  popupSpan = span;
+  var requestId = ++popupRequestId;
+  var line = span.closest('.transcript-line');
+  var idx = line ? parseInt(line.dataset.index, 10) : -1;
+  var seg = idx >= 0 ? transcriptSegments[idx] : null;
+  var t = seg ? seg.start : 0;
+  var word = span.dataset.w;
+
+  document.getElementById('wpWord').textContent = word;
+  document.getElementById('wpCtx').textContent = seg ? seg.text : '';
+  document.getElementById('wpMeta').textContent =
+    formatTime(t) + ' · ' + (videoInfo ? videoInfo.title : '');
+
+  var dictionary = document.getElementById('wpDictionary');
+  var analysis = document.getElementById('wpAnalysis');
+  var analyzeBtn = document.getElementById('wpAnalyze');
+  dictionary.textContent = '正在查本地词典…';
+  analysis.textContent = '';
+  analyzeBtn.disabled = false;
+  analyzeBtn.textContent = '✨ 深度解析当前语境';
+  analyzeBtn.onclick = function () {
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = '解析中…';
+    analysis.textContent = '正在分析当前原句，首次查询可能需要几十秒';
+    positionPopup(span);
+    App.analyzeWord(word, seg ? seg.text : '').then(function (result) {
+      if (requestId !== popupRequestId) return;
+      analysis.innerHTML = App.analysisHtml(result);
+      analyzeBtn.textContent = '✓ 已解析';
+      positionPopup(span);
+    }).catch(function (err) {
+      if (requestId !== popupRequestId) return;
+      analysis.innerHTML = '<span class="dict-error">' + App.escapeHtml(err.message) + '</span>';
+      analyzeBtn.disabled = false;
+      analyzeBtn.textContent = '重试深度解析';
+      positionPopup(span);
+    });
+  };
+
+  var existing = findEntry(currentSlug, t, word);
+  var btn = document.getElementById('wpBtn');
+  btn.onclick = function () {
+    if (existing) removeEntry(existing);
+    else saveEntry(word, seg, t);
+  };
+  if (existing) {
+    btn.textContent = '✓ 已标记（点击取消）';
+    btn.classList.add('on');
+  } else {
+    btn.textContent = '⭐ 标记生词';
+    btn.classList.remove('on');
+  }
+
+  popup.classList.add('show');
+  positionPopup(span);
+  App.lookupWord(word).then(function (entry) {
+    if (requestId !== popupRequestId) return;
+    dictionary.innerHTML = App.dictionaryHtml(entry);
+    positionPopup(span);
+  }).catch(function (err) {
+    if (requestId !== popupRequestId) return;
+    dictionary.innerHTML = '<span class="dict-error">' + App.escapeHtml(err.message) +
+      '，可以试试深度解析</span>';
+    positionPopup(span);
+  });
+}
+
+function closePopup() {
+  popupRequestId++;
+  popup.classList.remove('show');
+  popupSpan = null;
+}
+
+function saveEntry(word, seg, t) {
+  App.apiPost('/api/vocab', {
+    word: word,
+    sentence: seg ? seg.text : '',
+    slug: currentSlug,
+    video_title: videoInfo ? videoInfo.title : '',
+    t: t
+  }).then(function (res) {
+    vocabEntries.push(res.entry);
+    closePopup();
+    paintSavedWords();
+  }).catch(function (err) {
+    alert('标记失败：' + err.message);
+  });
+}
+
+function removeEntry(entry) {
+  App.apiDelete('/api/vocab?id=' + encodeURIComponent(entry.id)).then(function () {
+    vocabEntries = vocabEntries.filter(function (e) { return e.id !== entry.id; });
+    closePopup();
+    paintSavedWords();
+  }).catch(function (err) {
+    alert('删除失败：' + err.message);
+  });
+}
+
+// Close popup on outside click / Esc
+document.addEventListener('mousedown', function (e) {
+  if (!popup.classList.contains('show')) return;
+  if (popup.contains(e.target)) return;
+  if (popupSpan && e.target === popupSpan) return;
+  closePopup();
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') closePopup();
+});
+</script>
+</body>
+</html>

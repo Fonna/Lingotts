@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生词本 · TED Learner</title>
+<link rel="stylesheet" href="./assets/common.css">
+<style>
+.head-row {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.vocab-stats {
+  display: flex; gap: 12px; margin-bottom: 22px; flex-wrap: wrap;
+}
+.vs-card {
+  flex: 1; min-width: 140px;
+  padding: 16px 20px;
+}
+.vs-num {
+  font-family: Georgia, serif;
+  font-size: 1.7rem; line-height: 1.1;
+}
+.vs-label {
+  font-size: 0.75rem; color: var(--text-secondary);
+}
+.entry-list {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.entry {
+  padding: 18px 22px;
+}
+.entry-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 6px;
+}
+.entry-word {
+  font-family: Georgia, serif;
+  font-size: 1.35rem;
+}
+.entry-dictionary { display: none; margin: 12px 0; padding: 12px; border-radius: 10px; background: var(--accent-soft); }
+.entry-dictionary.open { display: block; }
+.entry-analysis { margin-top: 10px; }
+.meaning-btn, .analysis-btn { border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); padding: 6px 10px; cursor: pointer; font: inherit; font-size: .78rem; }
+.meaning-btn:hover, .analysis-btn:hover { border-color: var(--accent); }
+.analysis-btn { margin-top: 8px; }
+.entry-date {
+  font-size: 0.74rem; color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.entry-sentence {
+  font-size: 0.9rem; color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.entry-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.ctx-link {
+  color: var(--accent); text-decoration: none;
+  font-size: 0.82rem; font-weight: 500;
+}
+.ctx-link:hover { text-decoration: underline; }
+.del-btn {
+  background: none; border: none;
+  color: var(--text-tertiary);
+  font-family: inherit; font-size: 0.8rem;
+  cursor: pointer; padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+.del-btn:hover { color: #c0453b; background: rgba(192, 69, 59, 0.08); }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="head-row">
+    <div>
+      <h1 class="page-title">📝 生词本</h1>
+      <p class="page-sub">每个生词都带着它出现时的原句，点出处可以回到视频里再听一遍</p>
+    </div>
+    <div>
+      <input type="text" class="search-input" id="searchInput" placeholder="搜索单词或原句…">
+    </div>
+  </div>
+
+  <div class="vocab-stats">
+    <div class="panel vs-card">
+      <div class="vs-num" id="statTotal">0</div>
+      <div class="vs-label">生词记录</div>
+    </div>
+    <div class="panel vs-card">
+      <div class="vs-num" id="statDistinct">0</div>
+      <div class="vs-label">不同单词</div>
+    </div>
+    <div class="panel vs-card">
+      <button class="mini-toggle" id="themeBtn">🌙 Cool</button>
+    </div>
+  </div>
+
+  <div class="entry-list" id="entryList">
+    <div class="empty-state"><div class="empty-icon">📭</div><div>还没有生词，去学习页点单词标记吧</div></div>
+  </div>
+</div>
+
+<script src="./assets/common.js"></script>
+<script>
+var entries = [];
+var themeBtn = document.getElementById('themeBtn');
+if (document.body.dataset.theme === 'cool') themeBtn.textContent = '☀️ Warm';
+themeBtn.onclick = function () { App.toggleTheme(themeBtn); };
+
+function playerLink(entry) {
+  return './player.html?video=' + encodeURIComponent(entry.slug) +
+         '&t=' + Math.floor(entry.t);
+}
+
+function render() {
+  var q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+  var list = document.getElementById('entryList');
+  var filtered = entries.filter(function (e) {
+    if (!q) return true;
+    return e.word.toLowerCase().indexOf(q) !== -1 ||
+           (e.sentence || '').toLowerCase().indexOf(q) !== -1;
+  });
+  filtered.sort(function (a, b) {
+    return (b.created || '').localeCompare(a.created || '');
+  });
+
+  if (filtered.length === 0) {
+    var msg = entries.length === 0
+      ? '还没有生词，去学习页点单词标记吧'
+      : '没有匹配的生词';
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>' + msg + '</div></div>';
+    return;
+  }
+
+  var html = '';
+  filtered.forEach(function (e) {
+    html += '<div class="panel entry">' +
+      '<div class="entry-top">' +
+        '<span class="entry-word">' + App.escapeHtml(e.word) + '</span>' +
+        '<span class="entry-date">' + (e.created || '').slice(0, 10) + '</span>' +
+      '</div>' +
+      '<div class="entry-sentence">' + App.highlightWord(e.sentence || '', e.word) + '</div>' +
+      '<div class="entry-dictionary" aria-live="polite"></div>' +
+      '<div class="entry-foot">' +
+        '<a class="ctx-link" href="' + playerLink(e) + '">🎧 ' +
+          App.escapeHtml(e.video_title || e.slug) + ' · ' + App.fmtTime(e.t) + '</a>' +
+        '<button class="meaning-btn" data-id="' + App.escapeHtml(e.id) + '">查释义</button>' +
+        '<button class="del-btn" data-id="' + e.id + '">删除</button>' +
+      '</div>' +
+    '</div>';
+  });
+  list.innerHTML = html;
+}
+
+function refreshStats() {
+  document.getElementById('statTotal').textContent = entries.length;
+  var distinct = {};
+  entries.forEach(function (e) { distinct[e.word.toLowerCase()] = true; });
+  document.getElementById('statDistinct').textContent = Object.keys(distinct).length;
+}
+
+document.getElementById('entryList').addEventListener('click', function (e) {
+  var meaningBtn = e.target.closest ? e.target.closest('.meaning-btn') : null;
+  if (meaningBtn) {
+    var entry = entries.find(function (x) { return x.id === meaningBtn.dataset.id; });
+    if (!entry) return;
+    var panel = meaningBtn.closest('.entry').querySelector('.entry-dictionary');
+    if (panel.classList.contains('open')) {
+      panel.classList.remove('open');
+      meaningBtn.textContent = '查释义';
+      return;
+    }
+    panel.classList.add('open');
+    meaningBtn.textContent = '收起释义';
+    panel.textContent = '正在查本地词典…';
+    App.lookupWord(entry.word).then(function (data) {
+      panel.innerHTML = App.dictionaryHtml(data) +
+        '<button class="analysis-btn" data-id="' + App.escapeHtml(entry.id) + '">✨ 深度解析当前语境</button>' +
+        '<div class="entry-analysis"></div>';
+    }).catch(function (err) {
+      panel.innerHTML = '<span class="dict-error">' + App.escapeHtml(err.message) + '</span><br>' +
+        '<button class="analysis-btn" data-id="' + App.escapeHtml(entry.id) + '">✨ 深度解析当前语境</button>' +
+        '<div class="entry-analysis"></div>';
+    });
+    return;
+  }
+  var analysisBtn = e.target.closest ? e.target.closest('.analysis-btn') : null;
+  if (analysisBtn) {
+    var analyzedEntry = entries.find(function (x) { return x.id === analysisBtn.dataset.id; });
+    if (!analyzedEntry) return;
+    var output = analysisBtn.closest('.entry-dictionary').querySelector('.entry-analysis');
+    analysisBtn.disabled = true;
+    analysisBtn.textContent = '解析中…';
+    output.textContent = '首次查询可能需要几十秒';
+    App.analyzeWord(analyzedEntry.word, analyzedEntry.sentence || '').then(function (data) {
+      output.innerHTML = App.analysisHtml(data);
+      analysisBtn.textContent = '✓ 已解析';
+    }).catch(function (err) {
+      output.innerHTML = '<span class="dict-error">' + App.escapeHtml(err.message) + '</span>';
+      analysisBtn.disabled = false;
+      analysisBtn.textContent = '重试深度解析';
+    });
+    return;
+  }
+  var btn = e.target.closest ? e.target.closest('.del-btn') : null;
+  if (!btn) return;
+  if (!confirm('确定删除这个生词记录吗？')) return;
+  App.apiDelete('/api/vocab?id=' + encodeURIComponent(btn.dataset.id))
+    .then(function () {
+      entries = entries.filter(function (x) { return x.id !== btn.dataset.id; });
+      refreshStats();
+      render();
+    })
+    .catch(function (err) { alert('删除失败：' + err.message); });
+});
+
+document.getElementById('searchInput').addEventListener('input', render);
+
+App.getVocab().then(function (data) {
+  entries = data;
+  refreshStats();
+  render();
+}).catch(function (err) {
+  document.getElementById('entryList').innerHTML =
+    '<div class="empty-state"><div class="empty-icon">⚠️</div><div>加载失败：' +
+    App.escapeHtml(err.message) + '</div><div>请确认服务器已启动</div></div>';
+});
+</script>
+</body>
+</html>

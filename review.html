@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>复习 · TED Learner</title>
+<link rel="stylesheet" href="./assets/common.css">
+<style>
+.review-page { max-width: 850px; }
+.review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.review-head .page-sub { margin-bottom: 14px; }
+.review-meta { display: flex; align-items: center; gap: 12px; margin: 8px 0 20px; color: var(--text-secondary); font-size: .85rem; }
+.progress-track { height: 6px; flex: 1; background: var(--border); border-radius: 6px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: inherit; transition: width .3s ease; }
+.review-card { padding: 30px; min-height: 390px; display: flex; flex-direction: column; }
+.card-kicker { color: var(--accent); font-size: .76rem; letter-spacing: 1.8px; text-transform: uppercase; font-weight: 600; }
+.card-word { font-family: Georgia, serif; font-size: clamp(2.3rem, 6vw, 3.5rem); line-height: 1.15; margin: 16px 0 10px; overflow-wrap: anywhere; }
+.card-instruction { color: var(--text-tertiary); font-size: .84rem; margin-bottom: 26px; }
+.card-sentence { font-size: 1.06rem; line-height: 1.8; padding: 16px 20px; background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; }
+.card-source { color: var(--text-tertiary); font-size: .82rem; margin-top: 12px; }
+.card-source a { color: var(--accent); text-decoration: none; }
+.card-source a:hover { text-decoration: underline; }
+.card-actions { margin-top: auto; padding-top: 28px; }
+.flip-btn { width: 100%; justify-content: center; font-size: .95rem; padding: 12px; }
+.answer-block { padding: 14px 18px; background: var(--accent-soft); border-radius: 12px; margin-top: 12px; }
+.answer-block .dict-field { font-size: .87rem; }
+.answer-loading { color: var(--text-secondary); font-size: .86rem; }
+.analysis-toggle { margin-top: 12px; }
+.grade-prompt { font-size: .8rem; color: var(--text-tertiary); margin: 24px 0 10px; }
+.grade-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.grade-btn { border: 1px solid var(--border); background: var(--card-bg); color: var(--text); border-radius: 11px; padding: 10px 8px; font: inherit; font-size: .9rem; cursor: pointer; }
+.grade-btn small { display: block; color: var(--text-tertiary); font-size: .72rem; margin-top: 2px; }
+.grade-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.grade-btn:disabled { opacity: .55; cursor: wait; }
+.grade-error { color: #b34838; font-size: .85rem; margin-top: 10px; }
+.review-done { text-align: center; padding: 65px 30px; }
+.review-done .done-icon { font-size: 3rem; }
+.review-done h2 { font-family: Georgia, serif; font-weight: 400; margin: 12px 0; }
+.review-done p { color: var(--text-secondary); }
+.review-done .btn { margin-top: 12px; }
+@media (max-width: 620px) {
+  .review-card { padding: 22px; }
+  .grade-row { gap: 6px; }
+  .grade-btn { font-size: .78rem; }
+}
+</style>
+</head>
+<body>
+<div class="page review-page">
+  <div class="review-head">
+    <div>
+      <h1 class="page-title">🗂️ 生词复习</h1>
+      <p class="page-sub">看单词和原句，先回想含义，再翻面核对</p>
+    </div>
+    <button class="mini-toggle" id="themeBtn">🌙 Cool</button>
+  </div>
+  <div class="review-meta" id="reviewMeta" aria-live="polite"></div>
+  <div id="reviewArea" aria-live="polite">
+    <div class="panel empty-state">正在读取复习安排…</div>
+  </div>
+</div>
+
+<script src="./assets/common.js"></script>
+<script>
+var cards = [];
+var sessionTotal = 0;
+var completed = 0;
+var currentStats = null;
+var themeBtn = document.getElementById('themeBtn');
+if (document.body.dataset.theme === 'cool') themeBtn.textContent = '☀️ Warm';
+themeBtn.onclick = function () { App.toggleTheme(themeBtn); };
+
+function sourceLink(entry) {
+  return './player.html?video=' + encodeURIComponent(entry.slug) +
+    '&t=' + Math.floor(Number(entry.t) || 0);
+}
+
+function updateMeta() {
+  var meta = document.getElementById('reviewMeta');
+  if (!sessionTotal) {
+    meta.textContent = currentStats ? currentStats.total + ' 个不同单词 · 当前待复习 ' + currentStats.due + ' 个' : '';
+    return;
+  }
+  meta.innerHTML = '<span>本轮已完成 ' + completed + ' / ' + sessionTotal + '</span>' +
+    '<span class="progress-track"><span class="progress-fill" style="display:block;width:' +
+    (completed / sessionTotal * 100) + '%"></span></span>';
+}
+
+function showDone() {
+  updateMeta();
+  var area = document.getElementById('reviewArea');
+  if (!currentStats || !currentStats.total) {
+    area.innerHTML = '<div class="panel review-done"><div class="done-icon">🌱</div>' +
+      '<h2>先收集几个生词</h2><p>在视频字幕中点击单词并标记，就能在这里开始复习。</p>' +
+      '<a class="btn btn-primary" href="./library.html">去视频库</a></div>';
+    return;
+  }
+  var next = currentStats.next_due_at
+    ? '下次安排：' + new Date(currentStats.next_due_at).toLocaleString('zh-CN')
+    : '目前没有更多待复习的单词。';
+  area.innerHTML = '<div class="panel review-done"><div class="done-icon">✨</div>' +
+    '<h2>' + (sessionTotal ? '本轮复习完成' : '现在没有待复习单词') + '</h2>' +
+    '<p>' + App.escapeHtml(next) + '</p>' +
+    '<button class="btn btn-primary" id="refreshReview">刷新安排</button></div>';
+  document.getElementById('refreshReview').onclick = loadReview;
+}
+
+function showCard() {
+  if (!cards.length) { showDone(); return; }
+  updateMeta();
+  var card = cards[0];
+  var entry = card.entry;
+  var area = document.getElementById('reviewArea');
+  area.innerHTML = '<div class="panel review-card">' +
+    '<div class="card-kicker">待复习 · 第 ' + (completed + 1) + ' / ' + sessionTotal + ' 张</div>' +
+    '<div class="card-word">' + App.escapeHtml(card.word) + '</div>' +
+    '<div class="card-instruction">先回想它在这句话里的意思</div>' +
+    '<div class="card-sentence">' + App.highlightWord(entry.sentence || '', card.word) + '</div>' +
+    '<div class="card-source"><a href="' + sourceLink(entry) + '">🎧 ' +
+      App.escapeHtml(entry.video_title || entry.slug) + ' · ' + App.fmtTime(entry.t) + '</a></div>' +
+    '<div class="card-actions"><button class="btn btn-primary flip-btn" id="flipBtn">翻面看解析</button></div>' +
+    '</div>';
+  document.getElementById('flipBtn').onclick = showAnswer;
+}
+
+function showAnswer() {
+  var card = cards[0];
+  if (!card) return;
+  var entry = card.entry;
+  var actions = document.querySelector('.card-actions');
+  actions.innerHTML = '<div class="answer-block" id="localAnswer"><div class="answer-loading">正在查本地词典…</div></div>' +
+    '<div class="answer-block" id="cachedAnswer" style="display:none"></div>' +
+    '<button class="btn analysis-toggle" id="analyzeBtn">✨ 深度解析当前语境</button>' +
+    '<div class="grade-prompt">这次你记得怎么样？</div>' +
+    '<div class="grade-row">' +
+      '<button class="grade-btn" data-rating="unknown">不认识<small>10 分钟后重看</small></button>' +
+      '<button class="grade-btn" data-rating="fuzzy">模糊<small>明天再看</small></button>' +
+      '<button class="grade-btn" data-rating="known">认识<small>延长间隔</small></button>' +
+    '</div><div class="grade-error" id="gradeError" role="alert"></div>';
+  var local = document.getElementById('localAnswer');
+  App.lookupWord(card.word).then(function (data) {
+    if (cards[0] === card) local.innerHTML = App.dictionaryHtml(data);
+  }).catch(function (err) {
+    if (cards[0] === card) local.innerHTML = '<span class="dict-error">' + App.escapeHtml(err.message) + '</span>';
+  });
+  App.cachedAnalysis(card.word, entry.sentence || '').then(function (data) {
+    if (cards[0] !== card || !data) return;
+    var cached = document.getElementById('cachedAnswer');
+    cached.innerHTML = App.analysisHtml(data);
+    cached.style.display = 'block';
+    document.getElementById('analyzeBtn').style.display = 'none';
+  }).catch(function () {});
+  document.getElementById('analyzeBtn').onclick = function () {
+    var button = this;
+    button.disabled = true;
+    button.textContent = '解析中…';
+    App.analyzeWord(card.word, entry.sentence || '').then(function (data) {
+      if (cards[0] !== card) return;
+      var cached = document.getElementById('cachedAnswer');
+      cached.innerHTML = App.analysisHtml(data);
+      cached.style.display = 'block';
+      button.style.display = 'none';
+    }).catch(function (err) {
+      if (cards[0] !== card) return;
+      button.disabled = false;
+      button.textContent = '重试深度解析';
+      document.getElementById('gradeError').textContent = err.message;
+    });
+  };
+  document.querySelectorAll('.grade-btn').forEach(function (button) {
+    button.onclick = function () { gradeCard(card, button.dataset.rating); };
+  });
+}
+
+function gradeCard(card, rating) {
+  var buttons = document.querySelectorAll('.grade-btn');
+  buttons.forEach(function (button) { button.disabled = true; });
+  document.getElementById('gradeError').textContent = '';
+  App.gradeReview(card.word, rating, card.review.version).then(function (data) {
+    currentStats = data.stats;
+    cards.shift();
+    completed++;
+    showCard();
+  }).catch(function (err) {
+    buttons.forEach(function (button) { button.disabled = false; });
+    document.getElementById('gradeError').textContent = err.message;
+  });
+}
+
+function loadReview() {
+  document.getElementById('reviewArea').innerHTML = '<div class="panel empty-state">正在读取复习安排…</div>';
+  App.getReview().then(function (data) {
+    cards = data.cards || [];
+    currentStats = data.stats || null;
+    sessionTotal = cards.length;
+    completed = 0;
+    showCard();
+  }).catch(function (err) {
+    document.getElementById('reviewArea').innerHTML = '<div class="panel empty-state">' +
+      '<div class="empty-icon">⚠️</div>加载失败：' + App.escapeHtml(err.message) +
+      '<br><button class="btn" id="retryReview">重试</button></div>';
+    document.getElementById('retryReview').onclick = loadReview;
+  });
+}
+
+loadReview();
+</script>
+</body>
+</html>

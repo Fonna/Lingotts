@@ -1,0 +1,27 @@
+{
+  "media_file": "Mark Rober’s $60 Million Science Experiment ｜ TED.webm",
+  "folder": "Mark Robers $60 Million Science Experiment  TED",
+  "transcript_file": "transcript.txt",
+  "title": "Mark Rober's $60 Million Science Experiment",
+  "language": "en",
+  "youtube": "https://www.youtube.com/watch?v=RDFGkBE2O50",
+  "duration_s": 860.7,
+  "downloaded": "2026-06-09",
+  "speaker": "Mark Rober",
+  "category": "Science & STEM",
+  "tags": [
+    "Science",
+    "Physics",
+    "Experiment",
+    "STEM",
+    "NASA"
+  ],
+  "published": "2026-05-27",
+  "summary_zh": "前 NASA 工程师 Mark Rober 呈现了一场壮观科学实验——用零下 320°F 的液氮展示物理原理。他将火星探测器设计经验融入地面实验，以轻松易懂的方式激发观众对科学的热爱。",
+  "summary_en": "Former NASA engineer Mark Rober presents a spectacular science experiment with liquid nitrogen at −320°F, demonstrating physics principles with the same ingenuity he used designing Mars rover hardware. An electrifying blend of science and showmanship.",
+  "id": "52a953504cca4845b0b9a55b2f732359",
+  "schema_version": 1,
+  "aliases": [
+    "Mark Robers $60 Million Science Experiment  TED"
+  ]
+}
