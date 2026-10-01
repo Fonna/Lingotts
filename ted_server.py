@@ -8,6 +8,7 @@ import learning_data as ld
 import hmac
 import study_learning as sl
 import study_tasks as st
+import study_plan as sp
 
 BASE_DIR = Path(__file__).parent.resolve()
 MEDIA_DIR = BASE_DIR.parent / "TED"
@@ -117,8 +118,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     # ----- Routing -----
 
+    def study_units(self):
+        units = []
+        for video in vc.catalog(CATALOG_DIR,MEDIA_DIR)['videos']:
+            for unit in sl.clips(video['id'],vc.transcript_segments(video,MEDIA_DIR)):
+                units.append(dict(unit,title=video['title']))
+        return units
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path in ('/api/study/plan','/api/study/activity'):
+            try:
+                with VOCAB_LOCK, REVIEW_LOCK, CATALOG_LOCK:
+                    ld.recover_pending(VOCAB_FILE,REVIEW_FILE); data = sl.load(VOCAB_FILE)
+                    if parsed.path.endswith('/activity'): self.send_json(200,{'learning':data})
+                    else:
+                        query = urllib.parse.parse_qs(parsed.query)
+                        plan = sp.recommend(data,load_vocab(),load_states(REVIEW_FILE),self.study_units(),query.get('day',[''])[0],int(query.get('offset',['480'])[0]))
+                        self.send_json(200,{'plan':plan,'version':data['version']})
+            except (ValueError,OSError) as exc: self.send_json(400,{'error':str(exc)})
+            return
         if parsed.path == '/api/study':
             key = urllib.parse.parse_qs(parsed.query).get('video',[''])[0]
             try:
@@ -312,7 +331,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos", '/api/study/progress','/api/study/attempt') or parsed.path.startswith('/api/learning-data/'):
+        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos", '/api/study/progress','/api/study/attempt','/api/study/plan','/api/review/context') or parsed.path.startswith('/api/learning-data/'):
             content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             if content_type != "application/json":
                 self.send_json(415, {"error": "Content-Type must be application/json"})
@@ -323,6 +342,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if origin and origin not in allowed:
                 self.send_json(403, {"error": "cross-origin API request denied"})
                 return
+        if parsed.path in ('/api/study/plan','/api/review/context'):
+            request = self.read_json_body(strict=True)
+            if request is None: self.send_json(400,{'error':'学习请求格式无效'}); return
+            try:
+                with VOCAB_LOCK, REVIEW_LOCK, CATALOG_LOCK:
+                    ld.recover_pending(VOCAB_FILE,REVIEW_FILE); data = sl.load(VOCAB_FILE)
+                    if parsed.path.endswith('/plan'):
+                        data = sp.settings(data,request); sl.save(VOCAB_FILE,data)
+                        plan = sp.recommend(data,load_vocab(),load_states(REVIEW_FILE),self.study_units(),request['day'],request['offset'])
+                        self.send_json(200,{'plan':plan,'version':data['version']})
+                    else:
+                        if set(request) != {'id','word','answer','self_rating','version','review_version','epoch','request_id'}: raise ValueError('语境请求字段无效')
+                        if type(request['epoch']) is not int or request['epoch'] != load_epoch(REVIEW_FILE): raise ValueError('学习数据已恢复，请刷新复习卡')
+                        word = normalize_word(request['word'])
+                        if type(request['review_version']) is not int or current_state(load_states(REVIEW_FILE).get(word))['version'] != request['review_version']: raise ValueError('复习卡已变化，请刷新后再回答')
+                        entry = next((item for item in canonical_vocab(load_vocab(),vc.catalog(CATALOG_DIR,MEDIA_DIR)['videos']) if item.get('id')==request['id'] and normalize_word(item.get('word'))==word),None)
+                        if not entry: raise ValueError('原句记录已变化，请刷新复习卡')
+                        data,record = st.context(data,entry,request); sl.save(VOCAB_FILE,data)
+                        self.send_json(200,{'learning':data,'attempt':record})
+            except (ValueError,OSError) as exc: self.send_json(409,{'error':str(exc)})
+            return
         if parsed.path in ('/api/study/progress','/api/study/attempt'):
             request = self.read_json_body(strict=True)
             if request is None: self.send_json(400,{'error':'片段请求格式无效'}); return

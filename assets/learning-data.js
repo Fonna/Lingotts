@@ -50,6 +50,7 @@
       downloadBackup(data.backup);
       status.textContent = '已导出 ' + data.backup.vocab.entries.length + ' 条生词记录、' +
         Object.keys(data.backup.review.words).length + ' 个复习安排。' +
+        '片段进度 ' + Object.keys(data.backup.learning.segments).length + ' 个、练习 ' + data.backup.learning.attempts.length + ' 次、计划设置 ' + Object.keys(data.backup.learning.days).length + ' 天。' +
         (data.backup.resume.last ? '已包含续播位置。' : '当前浏览器暂无续播位置。') +
         (data.backup.warnings.length ? '\n' + data.backup.warnings.join('\n') : '');
     }).catch(function (error) { status.textContent = '导出失败：' + error.message; })
@@ -66,8 +67,8 @@
     confirm.checked = false; previewButton.disabled = !file.files.length; restoreStatus.textContent = '';
     document.getElementById('replaceWarning').hidden = true;
     document.getElementById('restoreRule').textContent = mode.value === 'merge'
-      ? '同词同视频同位置的生词保留本地记录，复习安排取较新一次评分；当前浏览器已有续播位置时保留。'
-      : '当前生词与复习安排会全部替换，续播位置也以备份为准；备份没有续播位置时会清空当前位置。';
+      ? '重复生词保留本地，复习、片段与计划设置取较新记录，练习按编号合并；已有续播位置保留。'
+      : '生词、复习、片段进度、练习和计划设置以备份替换；续播以备份为准。旧备份未包含的活动类别保留并提示。';
   }
   file.addEventListener('change', invalidate); mode.addEventListener('change', invalidate);
   previewButton.addEventListener('click', function () {
@@ -87,6 +88,7 @@
       previewBox.textContent = '备份时间：' + new Date(preview.exported_at).toLocaleString('zh-CN') +
         '\n当前 ' + counts.before_vocab + ' 条生词；备份 ' + counts.incoming_vocab + ' 条。' +
         '\n恢复后 ' + counts.after_vocab + ' 条生词、' + counts.after_review + ' 个复习安排。' +
+        '\n片段进度 ' + counts.after_segments + ' 个；练习记录 ' + counts.after_attempts + ' 次；计划设置 ' + counts.after_days + ' 天。' +
         '\n跳过重复生词 ' + counts.duplicates + ' 条；重分配冲突 ID ' + counts.id_conflicts + ' 条；保留较新本地复习安排 ' + counts.review_kept + ' 个。' +
         '\n续播位置：' + (preview.resume.last ? (preview.resume.last.title + ' · ' + App.fmtTime(preview.resume.last.t)) : '无') +
         (preview.warnings.length ? '\n' + preview.warnings.join('\n') : '');
@@ -120,6 +122,7 @@
         history();
         preview = null; restoreButton.hidden = true;
         var message = '已恢复 ' + data.counts.after_vocab + ' 条生词和 ' + data.counts.after_review + ' 个复习安排；恢复前备份已保存。';
+        message += '\n片段进度 ' + data.counts.after_segments + ' 个，练习 ' + data.counts.after_attempts + ' 次，计划设置 ' + data.counts.after_days + ' 天。';
         try {
           if (localStorage.getItem('ted:last') !== prior) message += '\n恢复期间其他页面更新了续播位置，已保留最新位置。';
           else saveResume(data.resume.last);

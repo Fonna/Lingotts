@@ -267,3 +267,32 @@ class LearningDataApiTests(unittest.TestCase):
                 self.assertEqual(error.exception.code,409); error.exception.close()
                 with urllib.request.urlopen(self.base+'/api/learning-data/backup?id='+restored['backup_id']) as response:
                     self.assertEqual(json.load(response)['backup']['vocab']['entries'][0]['t'],99)
+
+    def test_context_and_plan_api_guards_and_backup_payload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); vocab,states = root/'vocab.json',root/'review.json'
+            vocab.write_text(json.dumps({'entries':[ENTRY]}),encoding='utf-8'); states.write_text('{"words":{}}')
+            with patch.object(ted_server,'VOCAB_FILE',vocab),patch.object(ted_server,'REVIEW_FILE',states), \
+                    patch.object(ted_server.vc,'catalog',return_value={'videos':[VIDEO]}),patch.object(ted_server.vc,'records',return_value=([VIDEO],[])), \
+                    patch.object(ted_server.vc,'transcript_segments',return_value=[]):
+                def request(path,body=None,origin=None):
+                    headers = {'Content-Type':'application/json'}
+                    if origin: headers['Origin'] = origin
+                    req = urllib.request.Request(self.base+path,data=json.dumps(body).encode() if body is not None else None,headers=headers)
+                    try:
+                        with urllib.request.urlopen(req) as response: return response.status,json.load(response)
+                    except urllib.error.HTTPError as error:
+                        with error: return error.code,json.load(error)
+                payload = {'id':ENTRY['id'],'word':'hello','answer':'Hello is a greeting. Hello everyone.','self_rating':'clear','version':0,'review_version':0,'epoch':0,'request_id':'b'*32}
+                self.assertEqual(request('/api/review/context',payload,origin='https://example.org')[0],403)
+                self.assertEqual(request('/api/review/context',dict(payload,epoch=True))[0],409)
+                status,data = request('/api/review/context',payload)
+                self.assertEqual(status,200); self.assertIsNone(data['attempt']['correct'])
+                self.assertEqual(request('/api/review/context',payload)[1]['learning']['version'],1)
+                self.assertEqual(request('/api/study/plan?day=9999-12-31')[0],400)
+                setting = {'day':'2026-10-01','offset':480,'version':1,'quota':1,'skipped':['word:hello']}
+                self.assertEqual(request('/api/study/plan',setting)[0],200)
+                self.assertEqual(request('/api/study/plan',setting)[0],409)
+                backup = self.request({})[1]['backup']
+                self.assertEqual(backup['learning']['days']['2026-10-01']['quota'],1)
+                self.assertEqual(len(backup['learning']['attempts']),1)

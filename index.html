@@ -150,6 +150,7 @@
     </div>
   </div>
 
+  <section class="panel dash-card" id="dailyPlan"><h2>今日学习建议</h2><p id="planProgress"></p><div class="dc-actions"><label>建议负荷 <select id="planQuota" aria-label="建议负荷"><option value="1">1 项 · 轻量</option><option value="3" selected>3 项 · 常规</option><option value="5">5 项 · 进阶</option><option value="10">10 项 · 充足</option></select></label><button class="btn" id="refreshPlan">刷新建议</button><button class="btn" id="restoreSkipped" disabled>恢复今天跳过的项目</button></div><div id="planItems"></div><p id="planStatus" role="status" aria-live="polite"></p></section>
   <div class="section-label">最近标记的生词</div>
   <div class="recent-list" id="recentList">
     <div class="empty-state"><div class="empty-icon">✨</div><div>标记的生词会出现在这里</div></div>
@@ -157,6 +158,7 @@
 </div>
 
 <script src="./assets/common.js"></script>
+<script src="./assets/study-plan.js"></script>
 <script>
 // ----- Greeting -----
 var h = new Date().getHours();

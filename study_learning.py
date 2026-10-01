@@ -80,7 +80,17 @@ def validate(data):
             seconds(row['start'],'原文位置'); seconds(row['end'],'原文位置')
             if row['end'] <= row['start']: raise ValueError('原文范围无效')
             text(row['text'],'原文',4000,True)
-    if data['days'] != {}: raise ValueError('当前版本尚不支持计划数据')
+    if not isinstance(data['days'],dict) or len(data['days']) > 10000: raise ValueError('每日计划格式或数量无效')
+    for day,settings in data['days'].items():
+        try:
+            if not isinstance(day,str) or dt.date.fromisoformat(day).isoformat() != day: raise ValueError()
+        except (ValueError,TypeError): raise ValueError('计划日期无效')
+        if not isinstance(settings,dict) or set(settings) != {'quota','skipped','updated_at'}: raise ValueError('计划设置无效')
+        if type(settings['quota']) is not int or settings['quota'] not in (1,3,5,10): raise ValueError('计划负荷无效')
+        if not isinstance(settings['skipped'],list) or len(settings['skipped']) > 10000: raise ValueError('跳过项目无效')
+        for key in settings['skipped']:
+            if not isinstance(key,str) or not re.fullmatch(r'(?:clip|task):[a-f0-9]{32}|word:[a-z]+(?:[\x27-][a-z]+)*',key): raise ValueError('跳过项目编号无效')
+        if len(set(settings['skipped'])) != len(settings['skipped']) or not parse_due(settings['updated_at']): raise ValueError('计划时间或跳过列表无效')
     return copy.deepcopy(data)
 
 
@@ -127,4 +137,7 @@ def merge(local, incoming):
             result['attempts'].append(copy.deepcopy(item)); identifiers.add(item['id'])
         elif next(old for old in result['attempts'] if old['id'] == item['id']) != item:
             raise ValueError('练习编号对应不同记录，请核对备份')
+    for day,value in incoming['days'].items():
+        if day not in result['days'] or parse_due(value['updated_at']) > parse_due(result['days'][day]['updated_at']):
+            result['days'][day] = copy.deepcopy(value)
     return validate(result)

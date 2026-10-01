@@ -64,6 +64,10 @@
           .finally(function () { pending = false; submit.disabled = false; });
       };
       $('exerciseList').appendChild(row);
+      if (new URLSearchParams(location.search).get('task') === task.id) {
+        row.style.borderColor = 'var(--accent)';
+        setTimeout(function () { if (row.isConnected) row.scrollIntoView({block:'start'}); },0);
+      }
     });
     renderHistory();
   }

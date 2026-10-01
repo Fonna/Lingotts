@@ -78,3 +78,26 @@ def attempt(data,clip,request):
               'evidence':copy.deepcopy(task['evidence']), 'explanation':task['explanation']}
     updated = copy.deepcopy(data); updated['attempts'].append(record); updated['version'] += 1
     return validate(updated),record
+
+
+def context(data,entry,request):
+    from study_learning import validate
+    from learning_data import text
+    text(request.get('answer'),'语境回答',4000,True)
+    if request.get('self_rating') not in ('clear','needs_work'): raise ValueError('请选择语境自评')
+    identifier = request.get('request_id')
+    if not isinstance(identifier,str) or not re.fullmatch('[a-f0-9]{32}',identifier): raise ValueError('语境提交编号无效')
+    task_id = digest(['context',entry['word'],entry['slug'],entry['t'],entry['sentence']])
+    old = next((item for item in data['attempts'] if item['id']==identifier),None)
+    if old:
+        if old['task']==task_id and old['answer']==request['answer'] and old['self_rating']==request['self_rating']: return data,old
+        raise ValueError('语境重复提交内容不一致')
+    if type(request.get('version')) is not int or request['version'] != data['version']: raise ValueError('学习记录已变化，请重新提交')
+    video = entry['slug'] if re.fullmatch('[a-f0-9]{32}',entry['slug']) else digest(entry['slug'])
+    record = {'id':identifier,'video':video,'clip':digest(['context',entry['id']]),'task':task_id,'kind':'context',
+              'answer':request['answer'],'correct':None,'self_rating':request['self_rating'],
+              'created_at':dt.datetime.now(dt.timezone.utc).isoformat(),'reference':entry['sentence'] or entry['word'],
+              'evidence':[{'start':entry['t'],'end':entry['t']+1,'text':entry['sentence'] or entry['word']}],
+              'explanation':'对照原句核对含义，再检查自己的造句是否表达清楚。自评不替代单词的间隔复习评分。'}
+    updated = copy.deepcopy(data); updated['attempts'].append(record); updated['version'] += 1
+    return validate(updated),record

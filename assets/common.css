@@ -99,6 +99,7 @@ body {
 .app-nav .nav-link:hover { background: var(--accent-soft); color: var(--text); }
 .app-nav .nav-link.active { background: var(--accent); color: #fff; }
 .app-nav .nav-spacer { flex: 1; }
+.plan-item{padding:18px 0;border-top:1px solid var(--border)}.plan-item h3{margin:0 0 8px}.plan-item p,#planProgress,#planStatus{color:var(--text-secondary);overflow-wrap:anywhere}.plan-item .btn{margin-right:8px;margin-bottom:8px}#dailyPlan{margin-bottom:26px}#planQuota{font:inherit;max-width:100%;padding:8px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px}.context-task{margin:20px 0;display:grid;gap:10px}.context-task textarea,.context-task select{width:100%;min-width:0;font:inherit;padding:10px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px}.context-task p{margin:0;overflow-wrap:anywhere}
 
 /* ===== Page scaffold ===== */
 .page {

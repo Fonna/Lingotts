@@ -122,10 +122,25 @@ function showCard() {
     '<div class="card-sentence">' + App.highlightWord(entry.sentence || '', card.word) + '</div>' +
     '<div class="card-source"><a href="' + sourceLink(entry) + '">🎧 ' +
       App.escapeHtml(entry.video_title || entry.slug) + ' · ' + App.fmtTime(entry.t) + '</a></div>' +
+    '<section class="context-task"><label for="contextAnswer">语境练习（可选）：说明原句含义，再用这个词写一句英语</label><textarea id="contextAnswer" rows="3" maxlength="4000"></textarea><select id="contextRating" aria-label="语境练习自评"><option value="">对照原句后自评</option><option value="needs_work">还需练习</option><option value="clear">表达清楚</option></select><button class="btn" id="saveContext">保存语境练习</button><p id="contextStatus" role="status"></p></section>' +
     '<div class="card-actions"><button class="btn btn-primary flip-btn" id="flipBtn">翻面看解析</button></div>' +
     '</div>';
   document.getElementById('flipBtn').onclick = showAnswer;
   App.addPronunciation(document.getElementById('reviewPronunciation'), card.word);
+  var requestId = null, contentKey = null;
+  document.getElementById('saveContext').onclick = function () {
+    var button = this, answer = document.getElementById('contextAnswer').value, rating = document.getElementById('contextRating').value;
+    var status = document.getElementById('contextStatus');
+    if (!answer.trim() || !rating) { status.textContent = '请填写回答并选择自评。'; return; }
+    var key = JSON.stringify([answer,rating]);
+    if (key !== contentKey) { requestId = crypto.randomUUID().replace(/-/g,''); contentKey = key; }
+    button.disabled = true; status.textContent = '正在保存…';
+    App.apiGet('/api/study/activity').then(function (data) {
+      return App.apiPost('/api/review/context',{id:entry.id,word:card.word,answer:answer,self_rating:rating,version:data.learning.version,review_version:card.review.version,epoch:currentEpoch,request_id:requestId});
+    }).then(function (data) {
+      status.textContent = '语境练习已保存。' + data.attempt.explanation; requestId = null; contentKey = null;
+    }).catch(function (error) { status.textContent = error.message; }).finally(function () { button.disabled = false; });
+  };
 }
 
 function showAnswer() {
@@ -197,6 +212,8 @@ function loadReview() {
   document.getElementById('reviewArea').innerHTML = '<div class="panel empty-state">正在读取复习安排…</div>';
   App.getReview().then(function (data) {
     cards = data.cards || [];
+    var requestedWord = new URLSearchParams(location.search).get('word');
+    if (requestedWord) cards.sort(function (a,b) { return Number(b.word === requestedWord) - Number(a.word === requestedWord); });
     currentStats = data.stats || null;
     currentEpoch = data.epoch || 0;
     sessionTotal = cards.length;

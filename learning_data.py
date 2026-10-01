@@ -356,7 +356,8 @@ def plan_restore(vocab_path, review_path, records, source, mode, last=None):
     return {'token':token, 'mode':mode, 'warnings':warnings, 'exported_at':incoming['exported_at'],
             'counts':{'before_vocab':len(current['vocab']['entries']), 'incoming_vocab':len(incoming['vocab']['entries']),
                       'after_vocab':len(vocab['entries']), 'after_review':len(states['words']),
-                      'duplicates':duplicates, 'id_conflicts':id_conflicts, 'review_kept':review_kept},
+                      'duplicates':duplicates, 'id_conflicts':id_conflicts, 'review_kept':review_kept,
+                      'after_segments':len(learning['segments']), 'after_attempts':len(learning['attempts']), 'after_days':len(learning['days'])},
             'resume':{'last':restored_last}, 'vocab':vocab, 'review':states, 'learning':learning, 'before':current}
 
 
