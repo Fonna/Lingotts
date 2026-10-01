@@ -118,8 +118,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(200, {"video": video})
             else:
                 try:
-                    folder = vc.contained_path(MEDIA_DIR, video["folder"])
-                    segments = vc.read_segments(vc.contained_path(folder, video["transcript_file"]))
+                    segments = vc.transcript_segments(video, MEDIA_DIR)
+                    video["transcript_status"] = "ready" if segments else "missing"
                     for segment in segments:
                         segment["id"] = video["id"] + ":" + segment["id"]
                     self.send_json(200, {"video": video, "segments": segments})

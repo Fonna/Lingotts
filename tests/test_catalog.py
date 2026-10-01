@@ -105,7 +105,8 @@ class CatalogTests(CatalogFixture):
                        {'published': '2026-02-30'}, {'duration_s': float('nan')},
                        {'duration_s': 10**400},
                        {'media_file': '../outside.wav'}, {'id': 'override'}, {'folder': 'C:/Windows'},
-                       {'transcript_file': 'missing.txt'}, {'summary_en': None}):
+                       {'transcript_file': '../missing.txt'}, {'transcript_file': None},
+                       {'transcript_file': []}, {'summary_en': None}):
             with self.subTest(fields=fields), self.assertRaises(ValueError):
                 self.save(fields=fields, video_id=first['id'])
             self.assertEqual(path.read_bytes(), original)
@@ -118,6 +119,35 @@ class CatalogTests(CatalogFixture):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 self.save()
         self.assertFalse(list(self.directory.glob('*.json')))
+
+    def test_media_only_import_and_later_transcript_keep_same_identity(self):
+        transcript = self.media / self.folder / 'transcript.txt'
+        original = transcript.read_text(encoding='utf-8')
+        transcript.unlink()
+        record = self.save(fields={'transcript_file':''})
+        self.assertEqual(record['transcript_file'], 'transcript.txt')
+        self.assertEqual(record['duration_s'], 0)
+        data = vc.catalog(self.directory, self.media)
+        self.assertFalse(data['issues'])
+        self.assertEqual(data['videos'][0]['transcript_status'], 'missing')
+        self.assertIsNone(data['videos'][0]['transcript_url'])
+        before = (self.directory / (record['id'] + '.json')).read_bytes()
+        transcript.write_text(original, encoding='utf-8')
+        video = vc.catalog(self.directory, self.media)['videos'][0]
+        self.assertEqual(video['id'], record['id'])
+        self.assertEqual(video['transcript_status'], 'ready')
+        self.assertEqual(video['duration_s'], 2)
+        self.assertIsNotNone(video['transcript_url'])
+        self.assertEqual((self.directory / (record['id'] + '.json')).read_bytes(), before)
+        transcript.unlink()
+        self.assertEqual(vc.catalog(self.directory, self.media)['videos'][0]['transcript_status'], 'missing')
+
+    def test_custom_missing_transcript_path_is_allowed_but_directory_is_rejected(self):
+        record = self.save(fields={'transcript_file':'later.txt'})
+        self.assertEqual(vc.catalog(self.directory, self.media)['videos'][0]['transcript_status'], 'missing')
+        (self.media / self.folder / 'later.txt').mkdir()
+        with self.assertRaises(ValueError):
+            self.save(fields={'transcript_file':'later.txt'}, video_id=record['id'])
 
     def test_paths_cannot_escape_root_or_follow_symlinks(self):
         for value in ('../media-sibling/file', '/absolute', 'C:/Windows', 'a\\b', 'a/../b', ''):
@@ -206,6 +236,29 @@ class CatalogAPITests(CatalogFixture):
         self.assertEqual(self.request('/api/video?video=unknown')[0], 404)
         folders = self.request('/api/video-folders')[1]['folders']
         self.assertEqual(folders[0]['video_id'], video_id)
+
+    def test_api_media_only_playback_and_transcript_upgrade(self):
+        path = self.media / self.folder / 'transcript.txt'
+        original = path.read_text(encoding='utf-8')
+        path.unlink()
+        status, data = self.request('/api/videos', {'folder':self.folder, 'metadata':{'transcript_file':''}})
+        self.assertEqual(status, 201)
+        video_id = data['video']['id']
+        status, data = self.request('/api/video?video=' + video_id)
+        self.assertEqual(status, 200)
+        self.assertEqual(data['video']['transcript_status'], 'missing')
+        with urllib.request.urlopen(self.url + data['video']['media_url']) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b'RIFFtest-audio')
+        status, data = self.request('/api/transcript?video=' + video_id)
+        self.assertEqual(status, 200)
+        self.assertEqual(data['segments'], [])
+        self.assertEqual(data['video']['transcript_status'], 'missing')
+        path.write_text(original, encoding='utf-8')
+        status, data = self.request('/api/transcript?video=' + video_id)
+        self.assertEqual(status, 200)
+        self.assertEqual(data['video']['transcript_status'], 'ready')
+        self.assertEqual(len(data['segments']), 2)
 
     def test_api_rejects_cross_origin_invalid_body_and_duplicate(self):
         data = {'folder': self.folder, 'metadata': {}}

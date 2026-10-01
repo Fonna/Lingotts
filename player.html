@@ -567,6 +567,11 @@ function loadTranscript(videoId) {
   var scroll = document.getElementById('transcriptScroll');
   App.apiGet('/api/transcript?video=' + encodeURIComponent(videoId)).then(function (data) {
     transcriptSegments = data.segments;
+    if (!transcriptSegments.length) {
+      document.getElementById('langBadge').textContent = '待转录';
+      scroll.textContent = '这个视频尚未转录，可以正常播放。补充带时间戳字幕后，刷新即可使用同步字幕和点词学习。';
+      return;
+    }
     document.getElementById('langBadge').textContent = (data.video.language || 'en').toUpperCase();
     renderTranscript();
   }).catch(function (error) { scroll.textContent = '无法读取字幕：' + error.message; });

@@ -11,6 +11,10 @@
     player.href = './player.html?video=' + data.video.id;
     player.hidden = false;
     var container = document.getElementById('readingLines');
+    if (!data.segments.length) {
+      status.textContent = '待转录：这个视频还没有字幕，可以先打开播放器观看。补充带时间戳字幕后，刷新此页即可阅读。';
+      return;
+    }
     data.segments.forEach(function (segment) {
       var row = document.createElement('div'); row.className = 'reading-line'; row.id = segment.id;
       var link = document.createElement('a');

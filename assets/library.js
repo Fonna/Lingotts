@@ -23,11 +23,14 @@
         '<div class="card-body">' +
         (v.summary_zh ? '<div class="summary-block"><div class="summary-lang">中文摘要</div><p class="summary-text">' + escape(v.summary_zh) + '</p></div>' : '') +
         (v.summary_en ? '<div class="summary-block"><div class="summary-lang">English Summary</div><p class="summary-text en">' + escape(v.summary_en) + '</p></div>' : '') + '</div>' +
-        '<div class="card-meta"><span class="meta-item">⏱ ' + App.fmtTime(v.duration_s) +
-        '</span><span class="meta-item">发布时间 ' + escape(v.published || '未知') + '</span></div>' +
+        '<div class="card-meta"><span class="meta-item">⏱ ' + (v.duration_s ? App.fmtTime(v.duration_s) : '时长待确认') +
+        '</span><span class="meta-item">发布时间 ' + escape(v.published || '未知') +
+        '</span><span class="meta-item">' + (v.transcript_status === 'missing' ? '待转录 · 可播放' : '转录已就绪') + '</span></div>' +
         '<div class="card-tags">' + (v.tags || []).map(function (tag) { return '<span class="tag">' + escape(tag) + '</span>'; }).join('') +
         '</div><div class="card-actions"><a class="btn btn-primary" href="./player.html?video=' + v.id +
-        '">▶ 开始学习</a><a class="btn" href="./transcript.html?video=' + v.id + '">📄 转录</a></div>';
+        '">▶ ' + (v.transcript_status === 'missing' ? '播放' : '开始学习') + '</a>' +
+        (v.transcript_status === 'missing' ? '<a class="btn" href="./manage.html">补充转录</a>' :
+        '<a class="btn" href="./transcript.html?video=' + v.id + '">📄 转录</a>') + '</div>';
       if (v.youtube) {
         var source = document.createElement('a');
         source.className = 'btn btn-yt'; source.href = v.youtube;

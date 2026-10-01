@@ -17,7 +17,7 @@
     media.add(new Option('请选择媒体文件', ''));
     (item.media_files || []).forEach(function (name) { media.add(new Option(name, name)); });
     media.value = metadata.media_file || '';
-    status.textContent = item.error || (item.video_id ? '固定 ID：' + item.video_id + '。修改路径仍保留旧学习链接。' : '确认媒体和字幕文件，再填写需要展示的信息。');
+    status.textContent = item.error || (item.video_id ? '固定 ID：' + item.video_id + '。修改路径仍保留旧学习链接。' : '确认媒体文件，再填写需要展示的信息。没有字幕也可以导入并播放。');
   }
   function scan(message, focusId) {
     scanButton.disabled = true;

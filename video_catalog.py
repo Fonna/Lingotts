@@ -51,6 +51,22 @@ def read_segments(path):
     return segments
 
 
+def transcript_filename(value):
+    if not isinstance(value, str):
+        raise ValueError("transcript_file 必须是文本，可留空")
+    return value or "transcript.txt"
+
+
+def transcript_segments(record, media_dir):
+    folder = contained_path(media_dir, record.get("folder"))
+    transcript = contained_path(folder, transcript_filename(record.get("transcript_file", "")))
+    if not transcript.exists():
+        return []
+    if not transcript.is_file():
+        raise ValueError("字幕路径必须是文件")
+    return read_segments(transcript)
+
+
 def validate(record, media_dir):
     if (not isinstance(record, dict) or type(record.get("schema_version")) is not int
             or record.get("schema_version") != 1):
@@ -97,10 +113,7 @@ def validate(record, media_dir):
     media = contained_path(folder, record.get("media_file"))
     if not media.is_file() or media.suffix.lower() not in MEDIA_EXTENSIONS:
         raise ValueError("媒体文件不存在或格式不受支持")
-    transcript = contained_path(folder, record.get("transcript_file"))
-    if not transcript.is_file():
-        raise ValueError("字幕文件不存在")
-    return read_segments(transcript)
+    return transcript_segments(record, media_dir)
 
 
 def records(catalog_dir):
@@ -129,19 +142,23 @@ def catalog(catalog_dir=CATALOG_DIR, media_dir=MEDIA_DIR):
     videos, valid = [], []
     for record in items:
         try:
-            validate(record, media_dir)
-            valid.append(record)
+            segments = validate(record, media_dir)
+            valid.append((record, segments))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             issues.append({"file": str(record.get("id", "?")) + ".json", "error": str(exc)})
-    for record in valid:
+    for record, segments in valid:
         try:
             if any(identity_keys(record) & identity_keys(other)
-                   for other in valid if other is not record):
+                   for other, _ in valid if other is not record):
                 raise ValueError("视频 ID、目录或旧别名与其他记录冲突")
             video = dict(record)
+            video["transcript_file"] = transcript_filename(record.get("transcript_file", ""))
+            video["transcript_status"] = "ready" if segments else "missing"
+            if segments and not video.get("duration_s"):
+                video["duration_s"] = segments[-1]["end"]
             base = "/TED/" + "/".join(quote(p, safe="") for p in record["folder"].split("/")) + "/"
             video["media_url"] = base + "/".join(quote(p, safe="") for p in record["media_file"].split("/"))
-            video["transcript_url"] = base + "/".join(quote(p, safe="") for p in record["transcript_file"].split("/"))
+            video["transcript_url"] = (base + "/".join(quote(p, safe="") for p in video["transcript_file"].split("/"))) if segments else None
             videos.append(video)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             issues.append({"file": str(record.get("id", "?")) + ".json", "error": str(exc)})
@@ -170,7 +187,7 @@ def inspect_folder(folder, media_dir=MEDIA_DIR):
         if len(candidates) == 1:
             result["media_file"] = candidates[0]
     result["folder"] = folder
-    result.setdefault("transcript_file", "transcript.txt")
+    result["transcript_file"] = transcript_filename(result.get("transcript_file", ""))
     result.setdefault("title", folder)
     result.setdefault("language", "en")
     transcript = contained_path(directory, result["transcript_file"])
@@ -212,13 +229,14 @@ def save_video(folder, fields, video_id=None, catalog_dir=CATALOG_DIR, media_dir
         identity_keys(old)
     record = dict(old) if old else inspect_folder(folder, media_dir)["metadata"]
     record.update(fields)
+    record["transcript_file"] = transcript_filename(record.get("transcript_file", ""))
     record["folder"] = folder
     record["id"] = old["id"] if old else uuid.uuid4().hex
     record["schema_version"] = 1
     record["aliases"] = list(dict.fromkeys((old or {}).get("aliases", []) +
                                            ([(old or {})["folder"]] if old else []) + [folder]))
     segments = validate(record, media_dir)
-    record.setdefault("duration_s", segments[-1]["end"])
+    record.setdefault("duration_s", segments[-1]["end"] if segments else 0)
     for other in items:
         if other is not old and identity_keys(record) & identity_keys(other):
             raise ValueError("这个媒体目录或旧别名已被导入，请编辑已有视频")
