@@ -32,7 +32,7 @@
     $('studySaveStatus').textContent = state ? '已恢复保存的位置和步骤。' : '新片段，尚未保存进度。';
     $('studySource').href = 'player.html?video=' + encodeURIComponent(dataset.video.id) + '&t=' + clip.start;
     history.replaceState(null,'','study.html?video=' + dataset.video.id + '&clip=' + clip.id);
-    window.dispatchEvent(new CustomEvent('studyclip',{detail:{clip:clip,video:dataset.video,learning:dataset.learning}}));
+    window.dispatchEvent(new CustomEvent('studyclip',{detail:{clip:clip,video:dataset.video,learning:dataset.learning,tasks:dataset.tasks[clip.id]}}));
   }
   function loadVideo() {
     var current = ++generation; media.pause(); $('studyWorkspace').hidden = true; clip = null;
@@ -96,7 +96,7 @@
       .finally(function () { saving = false; $('saveStudy').disabled = false; });
   };
   window.Study = {
-    current:function () { return {clip:clip,video:dataset && dataset.video,learning:dataset && dataset.learning}; },
+    current:function () { return {clip:clip,video:dataset && dataset.video,learning:dataset && dataset.learning,tasks:clip && dataset.tasks[clip.id]}; },
     seek:seek,
     update:function (data) { dataset.learning = data; version = data.version; },
     pause:function () { media.pause(); }

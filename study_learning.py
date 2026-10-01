@@ -47,7 +47,7 @@ def validate(data):
         raise ValueError('片段进度格式或数量无效')
     fields = {'video','revision','start','end','t','mode','loop','speed','steps','note','updated_at'}
     for identifier, state in data['segments'].items():
-        if not re.fullmatch('[a-f0-9]{32}', identifier) or not isinstance(state, dict) or set(state) != fields:
+        if not isinstance(identifier,str) or not re.fullmatch('[a-f0-9]{32}', identifier) or not isinstance(state, dict) or set(state) != fields:
             raise ValueError('片段进度字段无效')
         for key in ('video','revision'):
             if not isinstance(state[key], str) or not re.fullmatch('[a-f0-9]{32}',state[key]): raise ValueError('片段关联无效')
@@ -59,8 +59,28 @@ def validate(data):
             raise ValueError('片段步骤无效')
         text(state['note'],'理解笔记',2000)
         if not parse_due(state['updated_at']): raise ValueError('片段更新时间无效')
-    if data['attempts'] != [] or data['days'] != {}:
-        raise ValueError('当前版本尚不支持此练习或计划数据')
+    if not isinstance(data['attempts'],list) or len(data['attempts']) > 10000: raise ValueError('练习记录格式或数量无效')
+    identifiers = set()
+    fields = {'id','video','clip','task','kind','answer','correct','self_rating','created_at','reference','evidence','explanation'}
+    for item in data['attempts']:
+        if not isinstance(item,dict) or set(item) != fields: raise ValueError('练习记录字段无效')
+        for key in ('id','video','clip','task'):
+            if not isinstance(item[key],str) or not re.fullmatch('[a-f0-9]{32}',item[key]): raise ValueError('练习关联无效')
+        if item['id'] in identifiers: raise ValueError('练习编号重复')
+        identifiers.add(item['id'])
+        if item['kind'] not in ('cloze','dictation','choice','summary','understanding','context'): raise ValueError('练习类型无效')
+        subjective = item['kind'] in ('summary','understanding','context')
+        if (subjective and (item['correct'] is not None or item['self_rating'] not in ('needs_work','clear'))) or (not subjective and (type(item['correct']) is not bool or item['self_rating'] is not None)):
+            raise ValueError('练习评判格式无效')
+        for key,limit in [('answer',4000),('reference',4000),('explanation',2000)]: text(item[key],key,limit,True)
+        if not parse_due(item['created_at']): raise ValueError('练习时间无效')
+        if not isinstance(item['evidence'],list) or not 1 <= len(item['evidence']) <= 10: raise ValueError('练习依据无效')
+        for row in item['evidence']:
+            if not isinstance(row,dict) or set(row) != {'start','end','text'}: raise ValueError('原文依据字段无效')
+            seconds(row['start'],'原文位置'); seconds(row['end'],'原文位置')
+            if row['end'] <= row['start']: raise ValueError('原文范围无效')
+            text(row['text'],'原文',4000,True)
+    if data['days'] != {}: raise ValueError('当前版本尚不支持计划数据')
     return copy.deepcopy(data)
 
 
@@ -96,8 +116,15 @@ def progress(data, clip, request):
 
 
 def merge(local, incoming):
+    from review_schedule import parse_due
     result = copy.deepcopy(local)
     for key, value in incoming['segments'].items():
-        if key not in result['segments'] or value['updated_at'] > result['segments'][key]['updated_at']:
+        if key not in result['segments'] or parse_due(value['updated_at']) > parse_due(result['segments'][key]['updated_at']):
             result['segments'][key] = value
+    identifiers = {item['id'] for item in result['attempts']}
+    for item in incoming['attempts']:
+        if item['id'] not in identifiers:
+            result['attempts'].append(copy.deepcopy(item)); identifiers.add(item['id'])
+        elif next(old for old in result['attempts'] if old['id'] == item['id']) != item:
+            raise ValueError('练习编号对应不同记录，请核对备份')
     return validate(result)
