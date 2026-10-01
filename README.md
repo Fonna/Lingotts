@@ -29,6 +29,7 @@ Youtube/
     ├── transcript.html          所有视频共用的转录阅读页
     ├── manage.html              扫描目录、导入和编辑视频
     ├── vocab.html / review.html  生词本、间隔复习
+    ├── data.html                学习数据备份
     ├── assets/                  共享样式与页面逻辑
     ├── video_catalog.py         目录汇总、校验、导入
     ├── ted_server.py            API、媒体路由与 Range 请求
@@ -114,6 +115,12 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 - 复习按单词去重，原句与出处保留。认识按简化 SM-2 安排（1 天、6 天、之后乘难度系数）；模糊次日再看，不认识 10 分钟后再看。
 - 生词存于 `data/vocab.json`，复习存于 `data/review.json`，续播存于当前浏览器 `localStorage` 的 `ted:last`。
 
+## 学习数据备份
+
+打开导航中的“学习数据”，点击“下载 JSON 备份”。备份使用 `format: tedlib-learning-data`、`schema_version: 1`，包含生词与原句出处、完整复习安排、当前浏览器续播位置，以及视频 ID/旧别名映射。导出不改写现有记录；媒体、字幕、本地词典和 AI 缓存不包含在学习备份中。
+
+已知旧视频目录关联在备份中转换为固定 ID；未找到的视频关联和暂无生词对应的复习安排仍保留，并给出提示。文件损坏、未知版本和非法记录会阻止导出，避免生成看似完整的空备份。此轮先提供导出，恢复功能随下一轮接入。
+
 目录 API 的 `transcript_status` 由当前文件推导：`missing`（待转录）或 `ready`（已就绪），不写入第二份状态清单。缺失字幕时 `/api/transcript` 返回空片段列表和待转录状态，播放器与转录页给出明确提示。
 
 ## API 与验证
@@ -128,6 +135,7 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 | `/api/vocab` / `/api/review` | 生词与复习 |
 | `/api/dictionary` / `/api/word-analysis` | 本地释义与语境解析 |
 | GET `/api/pronunciation?word=<单词>` | Windows 备用英语读音（WAV，内存缓存最近 128 词） |
+| POST `/api/learning-data/export` | `{last:当前浏览器续播记录或null}` 生成版本化学习备份 |
 
 ```powershell
 python -m unittest discover -s tests -v

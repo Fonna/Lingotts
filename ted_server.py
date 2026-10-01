@@ -4,6 +4,7 @@ from word_lookup import AnalysisError, analyze, cached_analysis, lookup, normali
 from review_schedule import REVIEW_FILE, current_state, load_states, next_state, review_queue, save_states
 import video_catalog as vc
 from pronunciation import PronunciationError, speech_audio
+import learning_data as ld
 
 BASE_DIR = Path(__file__).parent.resolve()
 MEDIA_DIR = BASE_DIR.parent / "TED"
@@ -265,7 +266,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos"):
+        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos", "/api/learning-data/export"):
             content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             if content_type != "application/json":
                 self.send_json(415, {"error": "Content-Type must be application/json"})
@@ -276,6 +277,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if origin and origin not in allowed:
                 self.send_json(403, {"error": "cross-origin API request denied"})
                 return
+        if parsed.path == '/api/learning-data/export':
+            data = self.read_json_body()
+            if data is None or set(data) - {'last'}:
+                self.send_json(400, {'error': '导出参数格式无效'})
+                return
+            try:
+                with VOCAB_LOCK, REVIEW_LOCK, CATALOG_LOCK:
+                    records, issues = vc.records(CATALOG_DIR)
+                    if issues:
+                        raise ValueError('视频目录有校验问题，请先在内容管理中修复后导出')
+                    backup = ld.export_data(VOCAB_FILE, REVIEW_FILE, records, data.get('last'))
+            except (OSError, ValueError) as exc:
+                self.send_json(400, {'error': str(exc)})
+                return
+            self.send_json(200, {'backup': backup})
+            return
         if parsed.path == "/api/videos":
             data = self.read_json_body()
             if data is None:

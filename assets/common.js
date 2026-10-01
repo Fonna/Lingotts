@@ -7,7 +7,8 @@
     { href: 'review.html', label: '🗂️ 复习' },
     { href: 'library.html', label: '📚 视频库' },
     { href: 'vocab.html', label: '📝 生词本' },
-    { href: 'manage.html', label: '内容管理' }
+    { href: 'manage.html', label: '内容管理' },
+    { href: 'data.html', label: '学习数据' }
   ];
 
   function currentFile() {
