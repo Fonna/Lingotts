@@ -55,6 +55,11 @@
 /* ===== Base ===== */
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
+.word-audio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pronunciation-control { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pronunciation-btn { border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; background: var(--card-bg); color: var(--text); font: inherit; font-size: .8rem; cursor: pointer; white-space: nowrap; }
+.pronunciation-btn:hover, .pronunciation-btn:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.pronunciation-status { font-size: .75rem; color: var(--text-secondary); overflow-wrap: anywhere; }
 html { scroll-behavior: smooth; }
 body {
   margin: 0;

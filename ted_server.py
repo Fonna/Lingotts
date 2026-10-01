@@ -3,6 +3,7 @@ from pathlib import Path
 from word_lookup import AnalysisError, analyze, cached_analysis, lookup, normalize_word
 from review_schedule import REVIEW_FILE, current_state, load_states, next_state, review_queue, save_states
 import video_catalog as vc
+from pronunciation import PronunciationError, speech_audio
 
 BASE_DIR = Path(__file__).parent.resolve()
 MEDIA_DIR = BASE_DIR.parent / "TED"
@@ -105,6 +106,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/pronunciation":
+            port = self.server.server_port
+            allowed = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+            origin = self.headers.get('Origin')
+            referer = urllib.parse.urlparse(self.headers.get('Referer', ''))
+            referer_origin = f'{referer.scheme}://{referer.netloc}' if referer.netloc else None
+            if ((origin and origin not in allowed) or
+                    (referer_origin and referer_origin not in allowed) or
+                    self.headers.get('Sec-Fetch-Site') in ('cross-site', 'same-site')):
+                self.send_json(403, {"error": "cross-origin API request denied"})
+                return
+            word = urllib.parse.parse_qs(parsed.query).get('word', [''])[0]
+            try:
+                audio = speech_audio(word)
+            except ValueError:
+                self.send_json(400, {"error": "invalid word"})
+                return
+            except PronunciationError as exc:
+                self.send_json(503, {"error": str(exc)})
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'audio/wav')
+            self.send_header('Content-Length', str(len(audio)))
+            self.send_header('Cache-Control', 'private, max-age=86400')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.end_headers()
+            self.wfile.write(audio)
+            return
         if parsed.path == "/api/videos":
             self.send_json(200, load_catalog())
             return

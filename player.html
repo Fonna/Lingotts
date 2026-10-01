@@ -396,7 +396,7 @@ body::after {
 
 <!-- Word popup -->
 <div class="word-popup" id="wordPopup">
-  <div class="wp-word" id="wpWord"></div>
+  <div class="word-audio"><div class="wp-word" id="wpWord"></div><span id="wpPronunciation"></span></div>
   <div class="wp-meta" id="wpMeta"></div>
   <div class="wp-ctx" id="wpCtx"></div>
   <div class="wp-dictionary" id="wpDictionary" aria-live="polite"></div>
@@ -406,6 +406,7 @@ body::after {
 </div>
 
 <script src="./assets/common.js"></script>
+<script src="./assets/pronunciation.js"></script>
 <script>
 // ===== Theme =====
 var body = document.body;
@@ -748,6 +749,10 @@ function openWordPopup(span) {
   var word = span.dataset.w;
 
   document.getElementById('wpWord').textContent = word;
+  App.stopPronunciation();
+  var pronunciation = document.getElementById('wpPronunciation');
+  pronunciation.replaceChildren();
+  App.addPronunciation(pronunciation, word);
   document.getElementById('wpCtx').textContent = seg ? seg.text : '';
   document.getElementById('wpMeta').textContent =
     formatTime(t) + ' · ' + (videoInfo ? videoInfo.title : '');
@@ -807,6 +812,7 @@ function openWordPopup(span) {
 }
 
 function closePopup() {
+  App.stopPronunciation();
   popupRequestId++;
   popup.classList.remove('show');
   popupSpan = null;

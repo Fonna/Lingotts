@@ -106,6 +106,8 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 ## 学习功能
 
 - 播放器同步字幕，点词查询音标、英汉释义并标记生词；生词本和复习页可跳回原句。
+- 查词弹窗、生词本、复习卡均有“🔊 读音”按钮，翻面前后都能听单词。再次点击停止；切换单词、关闭弹窗或离开页面会取消旧朗读，朗读时暂停当前视频。
+- 读音优先使用浏览器英语语音，并优先选择本地语音；浏览器没有英语语音或朗读失败时，自动使用 Windows 自带英语语音生成音频。备用方案不需要外部 API 或下载依赖，要求系统已安装英语语音包；非 Windows 环境需要浏览器提供英语语音。语音不可用或播放被阻止时显示可重试提示。
 - 本地词典 `data/ecdict.sqlite` 约 5.8 万词条，现有字幕不同单词约 98% 可精确匹配。来源与许可证见 `data/ECDICT-LICENSE.txt`。重建：`python scripts/build_dictionary.py`。
 - 可选语境解析调用火山方舟 `doubao-seed-2.1-turbo`。启动环境配置 `ARK_API_KEY`（或 `AGENT_PLAN_KEY`）；密钥仅服务端读取。同词同句缓存至 `data/analysis_cache.json`。离线核心播放、查词和复习不依赖 AI。
 - 复习按单词去重，原句与出处保留。认识按简化 SM-2 安排（1 天、6 天、之后乘难度系数）；模糊次日再看，不认识 10 分钟后再看。
@@ -124,9 +126,11 @@ python scripts/import_video.py "新目录" --id "原有固定ID"
 | POST `/api/videos` | `{folder, metadata, id?}` 导入或编辑 |
 | `/api/vocab` / `/api/review` | 生词与复习 |
 | `/api/dictionary` / `/api/word-analysis` | 本地释义与语境解析 |
+| GET `/api/pronunciation?word=<单词>` | Windows 备用英语读音（WAV，内存缓存最近 128 词） |
 
 ```powershell
 python -m unittest discover -s tests -v
+node --test tests/test_pronunciation.js
 python scripts/import_video.py --check
 python tests/browser_fixture.py
 # 浏览器测试使用 http://127.0.0.1:8767，独立目录和学习数据。

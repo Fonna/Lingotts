@@ -61,6 +61,7 @@
 </div>
 
 <script src="./assets/common.js"></script>
+<script src="./assets/pronunciation.js"></script>
 <script>
 var cards = [];
 var sessionTotal = 0;
@@ -87,6 +88,7 @@ function updateMeta() {
 }
 
 function showDone() {
+  App.stopPronunciation();
   updateMeta();
   var area = document.getElementById('reviewArea');
   if (!currentStats || !currentStats.total) {
@@ -106,6 +108,7 @@ function showDone() {
 }
 
 function showCard() {
+  App.stopPronunciation();
   if (!cards.length) { showDone(); return; }
   updateMeta();
   var card = cards[0];
@@ -113,7 +116,7 @@ function showCard() {
   var area = document.getElementById('reviewArea');
   area.innerHTML = '<div class="panel review-card">' +
     '<div class="card-kicker">待复习 · 第 ' + (completed + 1) + ' / ' + sessionTotal + ' 张</div>' +
-    '<div class="card-word">' + App.escapeHtml(card.word) + '</div>' +
+    '<div class="word-audio"><div class="card-word">' + App.escapeHtml(card.word) + '</div><span id="reviewPronunciation"></span></div>' +
     '<div class="card-instruction">先回想它在这句话里的意思</div>' +
     '<div class="card-sentence">' + App.highlightWord(entry.sentence || '', card.word) + '</div>' +
     '<div class="card-source"><a href="' + sourceLink(entry) + '">🎧 ' +
@@ -121,6 +124,7 @@ function showCard() {
     '<div class="card-actions"><button class="btn btn-primary flip-btn" id="flipBtn">翻面看解析</button></div>' +
     '</div>';
   document.getElementById('flipBtn').onclick = showAnswer;
+  App.addPronunciation(document.getElementById('reviewPronunciation'), card.word);
 }
 
 function showAnswer() {
@@ -188,6 +192,7 @@ function gradeCard(card, rating) {
 }
 
 function loadReview() {
+  App.stopPronunciation();
   document.getElementById('reviewArea').innerHTML = '<div class="panel empty-state">正在读取复习安排…</div>';
   App.getReview().then(function (data) {
     cards = data.cards || [];

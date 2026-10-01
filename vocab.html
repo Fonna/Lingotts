@@ -106,6 +106,7 @@
 </div>
 
 <script src="./assets/common.js"></script>
+<script src="./assets/pronunciation.js"></script>
 <script>
 var entries = [];
 var themeBtn = document.getElementById('themeBtn');
@@ -118,6 +119,7 @@ function playerLink(entry) {
 }
 
 function render() {
+  App.stopPronunciation();
   var q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
   var list = document.getElementById('entryList');
   var filtered = entries.filter(function (e) {
@@ -141,7 +143,7 @@ function render() {
   filtered.forEach(function (e) {
     html += '<div class="panel entry">' +
       '<div class="entry-top">' +
-        '<span class="entry-word">' + App.escapeHtml(e.word) + '</span>' +
+        '<div class="word-audio"><span class="entry-word">' + App.escapeHtml(e.word) + '</span></div>' +
         '<span class="entry-date">' + (e.created || '').slice(0, 10) + '</span>' +
       '</div>' +
       '<div class="entry-sentence">' + App.highlightWord(e.sentence || '', e.word) + '</div>' +
@@ -155,6 +157,9 @@ function render() {
     '</div>';
   });
   list.innerHTML = html;
+  list.querySelectorAll('.word-audio').forEach(function (container, index) {
+    App.addPronunciation(container, filtered[index].word);
+  });
 }
 
 function refreshStats() {
