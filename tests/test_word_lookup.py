@@ -58,6 +58,12 @@ class WordLookupTests(unittest.TestCase):
             self.assertEqual(again, result)
             self.assertEqual(len(calls), 1)
             self.assertIn("A chance discovery.", calls[0]["messages"][0]["content"])
+            with patch.dict(os.environ, {}, clear=True):
+                offline, cached = word_lookup.analyze('SERENDIPITY', '  A chance discovery.  ', cache_file, opener)
+                self.assertTrue(cached); self.assertEqual(offline,result)
+                self.assertEqual(word_lookup.cached_analysis('serendipity','A chance discovery.',cache_file),result)
+                self.assertIsNone(word_lookup.cached_analysis('serendipity','A different sentence.',cache_file))
+                self.assertEqual(len(calls),1)
 
     def test_missing_key_and_invalid_response_do_not_cache(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
@@ -120,6 +126,14 @@ class DictionaryApiTests(unittest.TestCase):
             urllib.request.urlopen(invalid)
         self.assertEqual(error.exception.code, 400)
         error.exception.close()
+
+    def test_reading_saved_analysis_never_generates_a_new_analysis(self):
+        with patch.object(ted_server,'cached_analysis',return_value={'zh':'saved'}) as cached, \
+                patch.object(ted_server,'analyze') as paid:
+            with urllib.request.urlopen(self.base+'/api/word-analysis?word=hello&sentence=Hello.') as response:
+                self.assertEqual(json.load(response),{'analysis':{'zh':'saved'}})
+            cached.assert_called_once_with('hello','Hello.')
+            paid.assert_not_called()
 
     def test_vocab_rejects_null_slug(self):
         invalid = urllib.request.Request(

@@ -169,6 +169,35 @@ function refreshStats() {
   document.getElementById('statDistinct').textContent = Object.keys(distinct).length;
 }
 
+function openMeaning(entry, panel) {
+  // Keep local lookup and saved analysis in separate containers so late replies cannot overwrite each other.
+  panel.dataset.loaded = 'true';
+  panel.innerHTML = '<div class="entry-local">正在查本地词典…</div>' +
+    '<button class="analysis-btn" data-id="' + App.escapeHtml(entry.id) + '" disabled>正在检查已有解析…</button>' +
+    '<div class="entry-analysis" role="status" aria-live="polite"></div>';
+  var local = panel.querySelector('.entry-local'), output = panel.querySelector('.entry-analysis');
+  var button = panel.querySelector('.analysis-btn');
+  App.lookupWord(entry.word).then(function (data) {
+    if (panel.isConnected) local.innerHTML = App.dictionaryHtml(data);
+  }).catch(function (error) {
+    if (panel.isConnected) local.innerHTML = '<span class="dict-error">' + App.escapeHtml(error.message) + '</span>';
+  });
+  App.cachedAnalysis(entry.word, entry.sentence || '').then(function (data) {
+    if (!panel.isConnected) return;
+    if (data) {
+      output.innerHTML = '<div class="dict-source">已保存解析 · 本次直接复用</div>' + App.analysisHtml(data);
+      button.textContent = '✓ 已缓存';
+    } else {
+      button.disabled = false; button.textContent = '✨ 深度解析（首次联网）';
+      output.textContent = '这句原文还没有已保存的解析，点击后联网生成并保存。';
+    }
+  }).catch(function (error) {
+    if (!panel.isConnected) return;
+    button.disabled = false; button.textContent = '重试深度解析';
+    output.textContent = '已有解析读取失败：' + error.message + '。点击重试会先检查已保存结果。';
+  });
+}
+
 document.getElementById('entryList').addEventListener('click', function (e) {
   var meaningBtn = e.target.closest ? e.target.closest('.meaning-btn') : null;
   if (meaningBtn) {
@@ -182,16 +211,7 @@ document.getElementById('entryList').addEventListener('click', function (e) {
     }
     panel.classList.add('open');
     meaningBtn.textContent = '收起释义';
-    panel.textContent = '正在查本地词典…';
-    App.lookupWord(entry.word).then(function (data) {
-      panel.innerHTML = App.dictionaryHtml(data) +
-        '<button class="analysis-btn" data-id="' + App.escapeHtml(entry.id) + '">✨ 深度解析当前语境</button>' +
-        '<div class="entry-analysis"></div>';
-    }).catch(function (err) {
-      panel.innerHTML = '<span class="dict-error">' + App.escapeHtml(err.message) + '</span><br>' +
-        '<button class="analysis-btn" data-id="' + App.escapeHtml(entry.id) + '">✨ 深度解析当前语境</button>' +
-        '<div class="entry-analysis"></div>';
-    });
+    if (!panel.dataset.loaded) openMeaning(entry, panel);
     return;
   }
   var analysisBtn = e.target.closest ? e.target.closest('.analysis-btn') : null;
@@ -201,11 +221,13 @@ document.getElementById('entryList').addEventListener('click', function (e) {
     var output = analysisBtn.closest('.entry-dictionary').querySelector('.entry-analysis');
     analysisBtn.disabled = true;
     analysisBtn.textContent = '解析中…';
-    output.textContent = '首次查询可能需要几十秒';
-    App.analyzeWord(analyzedEntry.word, analyzedEntry.sentence || '').then(function (data) {
-      output.innerHTML = App.analysisHtml(data);
-      analysisBtn.textContent = '✓ 已解析';
+    output.textContent = '正在获取解析；服务器会先检查已保存结果，首次生成可能需要几十秒。';
+    App.apiPost('/api/word-analysis', {word:analyzedEntry.word, sentence:analyzedEntry.sentence || ''}).then(function (data) {
+      if (!output.isConnected) return;
+      output.innerHTML = '<div class="dict-source">' + (data.cached ? '已保存解析 · 本次直接复用' : '本次新生成 · 已保存，后续可复用') + '</div>' + App.analysisHtml(data.analysis);
+      analysisBtn.textContent = data.cached ? '✓ 已缓存' : '✓ 已保存';
     }).catch(function (err) {
+      if (!output.isConnected) return;
       output.innerHTML = '<span class="dict-error">' + App.escapeHtml(err.message) + '</span>';
       analysisBtn.disabled = false;
       analysisBtn.textContent = '重试深度解析';
