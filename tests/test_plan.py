@@ -79,3 +79,12 @@ class PlanTests(unittest.TestCase):
         task = st.tasks(self.clip)[0]
         self.data,_ = st.attempt(self.data,self.clip,{'video':self.clip['video'],'clip':self.clip['id'],'task':task['id'],'version':0,'answer':'wrong','self_rating':None,'request_id':'b'*32})
         self.assertEqual([item['kind'] for item in self.plan(entries=entries)['items']],['word','retry','new'])
+
+    def test_obsolete_task_history_is_preserved_without_unusable_retry_links(self):
+        task = st.tasks(self.clip)[0]
+        self.data,_ = st.attempt(self.data,self.clip,{'video':self.clip['video'],'clip':self.clip['id'],'task':task['id'],
+                                'version':0,'answer':'wrong','self_rating':None,'request_id':'b'*32})
+        self.data['attempts'][0]['task'] = 'f'*32  # Older exercise selection/wording, same captions.
+        original = copy.deepcopy(self.data)
+        self.assertFalse(any(item['kind']=='retry' for item in self.plan(entries=[])['items']))
+        self.assertEqual(self.data,original)

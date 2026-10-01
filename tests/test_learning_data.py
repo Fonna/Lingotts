@@ -296,3 +296,41 @@ class LearningDataApiTests(unittest.TestCase):
                 backup = self.request({})[1]['backup']
                 self.assertEqual(backup['learning']['days']['2026-10-01']['quota'],1)
                 self.assertEqual(len(backup['learning']['attempts']),1)
+
+    def test_study_word_feedback_survives_reload_progress_and_backup_restore(self):
+        import study_learning as sl
+        import study_tasks as st
+        lines = [{'start':0,'end':5,'text':'We carefully learn how liquid nitrogen becomes a gas.'}]
+        clip = sl.clips(VIDEO['id'],lines)[0]
+        task = next(task for task in st.tasks(clip) if task['kind']=='dictation')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); vocab,states = root/'vocab.json',root/'review.json'
+            with patch.object(ted_server,'VOCAB_FILE',vocab),patch.object(ted_server,'REVIEW_FILE',states), \
+                    patch.object(ted_server.vc,'catalog',return_value={'videos':[VIDEO]}), \
+                    patch.object(ted_server.vc,'records',return_value=([VIDEO],[])), \
+                    patch.object(ted_server.vc,'transcript_segments',return_value=lines):
+                def request(path,body=None):
+                    req = urllib.request.Request(self.base+path,data=json.dumps(body).encode() if body is not None else None,
+                                                 headers={'Content-Type':'application/json'})
+                    with urllib.request.urlopen(req) as response: return json.load(response)
+                payload = {'video':VIDEO['id'],'clip':clip['id'],'task':task['id'],'version':0,
+                           'answer':'We carefully learned liquid nitrogen becomes a gas again.',
+                           'self_rating':None,'request_id':'c'*32}
+                submitted = request('/api/study/attempt',payload)
+                diff = submitted['attempt']['word_diff']
+                self.assertEqual({part['kind'] for part in diff},{'equal','replace','missing','extra'})
+                self.assertEqual(request('/api/study/attempt',payload),submitted)
+                original = sl.path_for(vocab).read_bytes()
+                reloaded = request('/api/study?video='+VIDEO['id'])
+                self.assertEqual(reloaded['learning']['attempts'][0]['word_diff'],diff)
+                self.assertEqual(sl.path_for(vocab).read_bytes(),original)
+                progress = request('/api/study/progress',{'video':VIDEO['id'],'clip':clip['id'],'version':1,
+                                   't':2,'mode':'blind','loop':False,'speed':1,'steps':['blind'],'note':''})
+                self.assertEqual(progress['learning']['attempts'][0]['word_diff'],diff)
+                backup = self.request({})[1]['backup']
+                self.assertNotIn('word_diff',backup['learning']['attempts'][0])
+                sl.save(vocab,sl.empty())
+                restore = {'text':json.dumps(backup),'mode':'replace','last':None}
+                restore['token'] = self.request(restore,endpoint='preview')[1]['preview']['token']
+                self.assertEqual(self.request(restore,endpoint='restore')[0],200)
+                self.assertEqual(request('/api/study?video='+VIDEO['id'])['learning']['attempts'][0]['word_diff'],diff)

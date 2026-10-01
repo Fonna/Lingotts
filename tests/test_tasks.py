@@ -2,6 +2,7 @@ import copy
 import json
 import tempfile
 import unittest
+import itertools
 from pathlib import Path
 import learning_data as ld
 import study_learning as sl
@@ -67,3 +68,101 @@ class TaskTests(unittest.TestCase):
         self.assertTrue(record['correct']); self.assertEqual(record['evidence'],rows)
         rows[0]['text'] = 'The gas occupies an unknown amount.'
         self.assertFalse(any(task['kind']=='choice' for task in st.tasks(sl.clips(clip['video'],rows)[0])))
+
+    def test_word_diff_handles_omissions_extras_forms_order_and_repeats(self):
+        cases = [
+            ('We learn from trying.', 'we learned trying!', ['equal','replace','missing','equal']),
+            ('We learn.', 'We really learn.', ['equal','extra','equal']),
+            ('We can can learn.', 'We can learn.', ['equal','missing','equal','equal']),
+            ('We learn.', 'We learn learn.', ['equal','extra','equal']),
+            ('red blue', 'blue red', ['extra','equal','missing']),
+            ("IT’S a two-step experiment, 700 times!", "it's a two-step experiment 700 times", ['equal']*6),
+            ('one two', '', ['missing','missing']),
+            ('', 'one two', ['extra','extra']),
+            ('', '', []),
+        ]
+        for reference, answer, kinds in cases:
+            with self.subTest(reference=reference,answer=answer):
+                diff = st.word_diff(reference,answer)
+                self.assertEqual([item['kind'] for item in diff],kinds)
+                self.assertEqual(' '.join(word for item in diff for word in item['expected']),st.normalized(reference))
+                self.assertEqual(' '.join(word for item in diff for word in item['actual']),st.normalized(answer))
+        result = st.word_diff('we learn','we learned'); result[0]['expected'].clear()
+        self.assertEqual(st.word_diff('we learn','we learned')[0]['expected'],['we'])
+
+    def test_word_diff_minimality_against_independent_short_sequence_oracle(self):
+        # Exhaustive repeated-word/order cases catch greedy alignment mistakes.
+        from functools import lru_cache
+        @lru_cache(None)
+        def distance(left,right):
+            if not left: return len(right)
+            if not right: return len(left)
+            return min(1+distance(left[1:],right),1+distance(left,right[1:]),
+                       (left[0]!=right[0])+distance(left[1:],right[1:]))
+        sequences = [tuple(words) for size in range(4) for words in itertools.product(('a','b'),repeat=size)]
+        for left in sequences:
+            for right in sequences:
+                diff = st.word_diff(' '.join(left),' '.join(right))
+                self.assertEqual(sum(item['kind']!='equal' for item in diff),distance(left,right))
+
+    def test_selection_prefers_bounded_complete_sentences_and_joins_caption_fragments(self):
+        lines = [{'start':0,'end':1,'text':'Welcome everyone.'},
+                 {'start':1,'end':4,'text':'The experiment helps us understand'},
+                 {'start':4,'end':8,'text':'how liquid nitrogen changes into a gas.'},
+                 {'start':8,'end':10,'text':'Nitrogen expands rapidly when it becomes gas.'}]
+        clip = sl.clips('a'*32,lines)[0]
+        tasks = st.tasks(clip)
+        listening = next(task for task in tasks if task['kind']=='dictation')
+        cloze = next(task for task in tasks if task['kind']=='cloze')
+        self.assertEqual(listening['answer'],' '.join(row['text'] for row in lines[1:3]))
+        self.assertEqual(listening['evidence'],lines[1:3])
+        self.assertEqual((listening['listen_at'],listening['listen_end']),(1,8))
+        self.assertNotEqual(cloze['evidence'],listening['evidence'])
+        self.assertEqual(st.tasks(clip),tasks)
+        public = st.public_tasks(clip)
+        self.assertFalse(any('answer' in task or 'evidence' in task for task in public))
+
+    def test_cloze_avoids_function_words_numbers_names_and_longest_word_bias(self):
+        text = 'The gas expands in an extraordinarily surprising experiment with Alice at 700 degrees.'
+        frequency = st.Counter({'expands':3,'extraordinarily':1,'Alice':10,'700':10,'the':10})
+        target = st.cloze_target(text,frequency)
+        self.assertEqual(target[0],'expands')
+        self.assertIsNone(st.cloze_target('This is what we do with Alice at 700.',frequency))
+        clip = sl.clips('a'*32,[{'start':0,'end':4,'text':'This is what we do at 700.'}])[0]
+        self.assertFalse(any(task['kind']=='cloze' for task in st.tasks(clip)))
+        self.assertTrue(any(task['kind']=='dictation' for task in st.tasks(clip)))
+
+    def test_selection_does_not_join_across_long_gaps_or_exceed_bounds(self):
+        clip = sl.clips('a'*32,[{'start':0,'end':3,'text':'We carefully learn about the experiment'},
+                              {'start':8,'end':12,'text':'and understand how the gas expands.'}])[0]
+        self.assertTrue(all(len(item['evidence'])==1 for item in st.sentence_candidates(clip)))
+        self.assertEqual(st.tasks(sl.clips('a'*32,[{'start':0,'end':3,'text':'...'}])[0]),[])
+        short = sl.clips('a'*32,[{'start':0,'end':3,'text':'Gas expands.'}])[0]
+        self.assertTrue(st.tasks(short))
+
+    def test_public_history_derives_feedback_without_modifying_saved_or_backup_data(self):
+        task = next(task for task in st.tasks(self.clip) if task['kind']=='dictation')
+        self.data,record = st.attempt(self.data,self.clip,self.request(task,'We learned.'))
+        original = copy.deepcopy(self.data)
+        visible = st.public_learning(self.data,self.clip['video'])
+        self.assertIn('word_diff',visible['attempts'][0])
+        self.assertEqual(visible['attempts'][0]['word_diff'],st.word_diff(record['reference'],record['answer']))
+        self.assertEqual(self.data,original)
+        self.assertEqual(st.public_learning(self.data,'f'*32),original)
+        self.assertNotIn('word_diff',st.public_attempt(dict(record,kind='summary')))
+        with tempfile.TemporaryDirectory() as temporary:
+            vocab = Path(temporary)/'vocab.json'; review = vocab.with_name('review.json')
+            sl.save(vocab,self.data)
+            backup = ld.export_data(vocab,review,[])
+            self.assertEqual(backup['learning']['attempts'],original['attempts'])
+            sl.save(vocab,sl.empty())
+            ld.commit_restore(vocab,review,ld.plan_restore(vocab,review,[],json.dumps(backup),'replace'))
+            self.assertEqual(st.public_learning(sl.load(vocab),self.clip['video'])['attempts'],visible['attempts'])
+
+    def test_public_history_only_decorates_twenty_visible_attempts_per_clip(self):
+        task = st.tasks(self.clip)[0]
+        for index in range(22):
+            self.data,_ = st.attempt(self.data,self.clip,self.request(task,'wrong',identifier=f'{index:032x}'))
+        visible = st.public_learning(self.data,self.clip['video'])
+        self.assertEqual(sum('word_diff' in item for item in visible['attempts']),20)
+        self.assertNotIn('word_diff',visible['attempts'][0])

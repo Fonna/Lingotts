@@ -147,7 +147,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if not video: raise ValueError('视频不存在或目录有错误')
                     units = sl.clips(video['id'],vc.transcript_segments(video,MEDIA_DIR))
                     data = sl.load(VOCAB_FILE)
-                    self.send_json(200,{'video':video,'clips':units,'learning':data,
+                    self.send_json(200,{'video':video,'clips':units,'learning':st.public_learning(data,video['id']),
                                        'tasks':{unit['id']:st.public_tasks(unit) for unit in units}})
             except (OSError,ValueError) as exc: self.send_json(400,{'error':str(exc)})
             return
@@ -380,7 +380,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         data = sl.progress(sl.load(VOCAB_FILE),clip,request)
                         record = None
                     sl.save(VOCAB_FILE,data)
-                    self.send_json(200,{'learning':data,'attempt':record})
+                    self.send_json(200,{'learning':st.public_learning(data,video['id']),
+                                        'attempt':st.public_attempt(record) if record else None})
             except (ValueError,OSError) as exc: self.send_json(409,{'error':str(exc)})
             return
         if parsed.path in ('/api/learning-data/preview', '/api/learning-data/restore'):

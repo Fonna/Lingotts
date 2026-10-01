@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from review_schedule import parse_due, review_queue
 from study_learning import STEPS, validate
 from word_lookup import normalize_word
+from study_tasks import tasks
 
 QUOTAS = (1,3,5,10)
 
@@ -34,10 +35,14 @@ def recommend(data,entries,states,units,day,offset,now=None):
         latest[item['task']] = item
     unresolved = [item for item in latest.values() if (item['correct'] is False or item['self_rating']=='needs_work') and parse_due(item['created_at']) >= now-dt.timedelta(days=14)]
     units_by_id = {unit['id']:unit for unit in units}
+    current_tasks = {}
     for item in sorted(unresolved,key=lambda item:parse_due(item['created_at']),reverse=True):
         if item['kind'] == 'context': continue  # Word reviews already provide a context task.
         clip = units_by_id.get(item['clip'])
         if clip:
+            if clip['id'] not in current_tasks:
+                current_tasks[clip['id']] = {task['id'] for task in tasks(clip)}
+            if item['task'] not in current_tasks[clip['id']]: continue
             candidates.append({'id':'task:'+item['task'],'kind':'retry','title':'重做练习 · ' + clip['title'] + ' · ' + clip['label'],
                                'reason':'最近一次回答未吻合原文或自评还需练习；先回听依据，再重新回答。',
                                'href':'study.html?' + urlencode({'video':clip['video'],'clip':clip['id'],'task':item['task']}), 'minutes':4})

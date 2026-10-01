@@ -7,6 +7,20 @@
     container.replaceChildren();
     var heading = document.createElement('p'); heading.textContent = verdict(item) + '。' + item.explanation; container.appendChild(heading);
     var reference = document.createElement('p'); reference.textContent = '原文参考：' + item.reference; container.appendChild(reference);
+    if (item.word_diff) {
+      var comparison = document.createElement('div'); comparison.className = 'word-comparison';
+      var title = document.createElement('p'); title.textContent = '逐词对照（忽略大小写与标点）'; comparison.appendChild(title);
+      var list = document.createElement('ol'); list.className = 'word-diff';
+      var names = {equal:'吻合', missing:'漏写', extra:'多写', replace:'不一致'};
+      item.word_diff.forEach(function (part) {
+        var token = document.createElement('li'); token.className = 'word-diff-' + part.kind;
+        var label = document.createElement('span'); label.className = 'word-diff-label'; label.textContent = names[part.kind]; token.appendChild(label);
+        var text = document.createElement('span');
+        text.textContent = part.kind === 'replace' ? '你写：' + part.actual.join(' ') + ' → 原文：' + part.expected.join(' ') : (part.expected.length ? part.expected : part.actual).join(' ');
+        token.appendChild(text); list.appendChild(token);
+      });
+      comparison.appendChild(list); container.appendChild(comparison);
+    }
     item.evidence.forEach(function (line) {
       var button = document.createElement('button'); button.className = 'btn'; button.textContent = '回听 ' + App.fmtTime(line.start) + ' · ' + line.text;
       button.onclick = function () { Study.seek(line.start); document.getElementById('studyMedia').play().catch(function (error) { $('exerciseStatus').textContent = error.message; }); };
