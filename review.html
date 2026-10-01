@@ -67,6 +67,7 @@ var cards = [];
 var sessionTotal = 0;
 var completed = 0;
 var currentStats = null;
+var currentEpoch = 0;
 var themeBtn = document.getElementById('themeBtn');
 if (document.body.dataset.theme === 'cool') themeBtn.textContent = '☀️ Warm';
 themeBtn.onclick = function () { App.toggleTheme(themeBtn); };
@@ -180,7 +181,7 @@ function gradeCard(card, rating) {
   var buttons = document.querySelectorAll('.grade-btn');
   buttons.forEach(function (button) { button.disabled = true; });
   document.getElementById('gradeError').textContent = '';
-  App.gradeReview(card.word, rating, card.review.version).then(function (data) {
+  App.gradeReview(card.word, rating, card.review.version, currentEpoch).then(function (data) {
     currentStats = data.stats;
     cards.shift();
     completed++;
@@ -197,6 +198,7 @@ function loadReview() {
   App.getReview().then(function (data) {
     cards = data.cards || [];
     currentStats = data.stats || null;
+    currentEpoch = data.epoch || 0;
     sessionTotal = cards.length;
     completed = 0;
     showCard();

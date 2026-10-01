@@ -1,10 +1,11 @@
 import http.server, json, os, urllib.parse, uuid, datetime, threading, math
 from pathlib import Path
 from word_lookup import AnalysisError, analyze, cached_analysis, lookup, normalize_word
-from review_schedule import REVIEW_FILE, current_state, load_states, next_state, review_queue, save_states
+from review_schedule import REVIEW_FILE, current_state, load_states, next_state, review_queue, save_states, load_epoch
 import video_catalog as vc
 from pronunciation import PronunciationError, speech_audio
 import learning_data as ld
+import hmac
 
 BASE_DIR = Path(__file__).parent.resolve()
 MEDIA_DIR = BASE_DIR.parent / "TED"
@@ -69,6 +70,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             rel = path
             base = str(BASE_DIR)
         full = Path(base, rel).resolve()
+        if full.is_relative_to((VOCAB_FILE.parent / 'backups').resolve()):
+            return str(BASE_DIR / '__forbidden_path__')
         if not full.is_relative_to(Path(base).resolve()):
             return str(BASE_DIR / "__forbidden_path__")
         return str(full)
@@ -94,19 +97,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def read_json_body(self):
+    def read_json_body(self, max_body=MAX_BODY, strict=False):
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             return None
         if length <= 0:
             return {}
-        if length > MAX_BODY:
+        if length > max_body:
             return None
         raw = self.rfile.read(length)
         try:
-            data = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            data = ld.json_loads(raw.decode('utf-8')) if strict else json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
             return None
         return data if isinstance(data, dict) else None
 
@@ -114,6 +117,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == '/api/learning-data/backup':
+            identifier = urllib.parse.parse_qs(parsed.query).get('id', [''])[0]
+            try:
+                backup = ld.load_backup(VOCAB_FILE, identifier)
+            except (OSError, ValueError) as exc:
+                self.send_json(404, {'error':str(exc)})
+                return
+            self.send_json(200, {'backup':backup})
+            return
         if parsed.path == "/api/pronunciation":
             port = self.server.server_port
             allowed = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
@@ -199,10 +211,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_json(200, {"folders": folders, "issues": issues})
             return
         if parsed.path == "/api/vocab":
-            self.send_json(200, {"entries": canonical_vocab(load_vocab(), load_catalog()["videos"])})
+            with VOCAB_LOCK, REVIEW_LOCK:
+                try: ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                except (OSError, ValueError) as exc:
+                    self.send_json(503, {'error':'未完成恢复需要处理：' + str(exc)}); return
+                entries = canonical_vocab(load_vocab(), load_catalog()["videos"])
+            self.send_json(200, {"entries": entries})
             return
         if parsed.path == "/api/review":
-            self.send_json(200, review_queue(load_vocab(), load_states(REVIEW_FILE)))
+            with VOCAB_LOCK, REVIEW_LOCK:
+                try: ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                except (OSError, ValueError) as exc:
+                    self.send_json(503, {'error':'未完成恢复需要处理：' + str(exc)}); return
+                queue = review_queue(load_vocab(), load_states(REVIEW_FILE))
+                queue['epoch'] = load_epoch(REVIEW_FILE)
+            self.send_json(200, queue)
             return
         if parsed.path == "/api/word-analysis":
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
@@ -266,7 +289,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos", "/api/learning-data/export"):
+        if parsed.path in ("/api/word-analysis", "/api/vocab", "/api/review", "/api/videos") or parsed.path.startswith('/api/learning-data/'):
             content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             if content_type != "application/json":
                 self.send_json(415, {"error": "Content-Type must be application/json"})
@@ -277,13 +300,39 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if origin and origin not in allowed:
                 self.send_json(403, {"error": "cross-origin API request denied"})
                 return
+        if parsed.path in ('/api/learning-data/preview', '/api/learning-data/restore'):
+            data = self.read_json_body(ld.MAX_BYTES * 2 + 4096, strict=True)
+            if data is None or set(data) - {'text', 'mode', 'last', 'token'}:
+                self.send_json(400, {'error':'恢复请求格式无效'}); return
+            try:
+                with VOCAB_LOCK, REVIEW_LOCK, CATALOG_LOCK:
+                    ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                    records, issues = vc.records(CATALOG_DIR)
+                    if issues: raise ValueError('当前视频目录有校验问题，请先修复')
+                    plan = ld.plan_restore(VOCAB_FILE, REVIEW_FILE, records, data.get('text'), data.get('mode'), data.get('last'))
+                    if parsed.path.endswith('/preview'):
+                        preview = {key:plan[key] for key in ('token','mode','warnings','counts','exported_at','resume')}
+                        self.send_json(200, {'preview':preview}); return
+                    token = data.get('token')
+                    if (not isinstance(token, str) or len(token) != 64 or
+                            any(char not in '0123456789abcdef' for char in token) or
+                            not hmac.compare_digest(token, plan['token'])):
+                        self.send_json(409, {'error':'预览后学习记录或恢复选项已变化，请重新预览'}); return
+                    identifier = ld.commit_restore(VOCAB_FILE, REVIEW_FILE, plan)
+            except ValueError as exc:
+                self.send_json(400, {'error':str(exc)}); return
+            except OSError as exc:
+                self.send_json(503, {'error':'恢复未完成，请检查磁盘后重新预览；已保存的恢复前备份会保留：' + str(exc)}); return
+            self.send_json(200, {'ok':True, 'backup_id':identifier, 'resume':plan['resume'], 'counts':plan['counts']})
+            return
         if parsed.path == '/api/learning-data/export':
-            data = self.read_json_body()
+            data = self.read_json_body(strict=True)
             if data is None or set(data) - {'last'}:
                 self.send_json(400, {'error': '导出参数格式无效'})
                 return
             try:
                 with VOCAB_LOCK, REVIEW_LOCK, CATALOG_LOCK:
+                    ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
                     records, issues = vc.records(CATALOG_DIR)
                     if issues:
                         raise ValueError('视频目录有校验问题，请先在内容管理中修复后导出')
@@ -335,7 +384,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     or not isinstance(version, int) or isinstance(version, bool) or version < 0):
                 self.send_json(400, {"error": "invalid review grade"})
                 return
-            with REVIEW_LOCK:
+            with VOCAB_LOCK, REVIEW_LOCK:
+                try: ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                except (OSError, ValueError) as exc:
+                    self.send_json(503, {'error':str(exc)}); return
+                epoch = load_epoch(REVIEW_FILE)
+                if type(data.get('epoch',0)) is not int or data.get('epoch',0) != epoch:
+                    self.send_json(409, {'error':'学习数据已恢复，请刷新复习卡后评分'}); return
                 entries = load_vocab()
                 if not any(normalize_word(e.get("word")) == word for e in entries if isinstance(e, dict)):
                     self.send_json(404, {"error": "word is no longer in the vocabulary book"})
@@ -370,13 +425,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 t = float(data.get("t"))
             except (TypeError, ValueError):
                 t = 0.0
-            if (not word or not slug or len(word) > 80 or len(sentence) > 1000
+            if (not normalize_word(word) or not slug or len(word) > 80 or len(sentence) > 1000
                     or len(slug) > 255 or len(video_title) > 255
                     or not math.isfinite(t) or t < 0):
                 self.send_json(400, {"error": "invalid vocabulary entry"})
                 return
 
-            with VOCAB_LOCK:
+            with VOCAB_LOCK, REVIEW_LOCK:
+                try: ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                except (OSError, ValueError) as exc:
+                    self.send_json(503, {'error':str(exc)}); return
                 entries = load_vocab()
                 videos = load_catalog()["videos"]
                 video = vc.resolve_video(slug, videos)
@@ -409,7 +467,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/vocab":
             entry_id = urllib.parse.parse_qs(parsed.query).get("id", [""])[0]
-            with VOCAB_LOCK:
+            with VOCAB_LOCK, REVIEW_LOCK:
+                try: ld.recover_pending(VOCAB_FILE, REVIEW_FILE)
+                except (OSError, ValueError) as exc:
+                    self.send_json(503, {'error':str(exc)}); return
                 entries = load_vocab()
                 remaining = [e for e in entries if e["id"] != entry_id]
                 if len(remaining) == len(entries):

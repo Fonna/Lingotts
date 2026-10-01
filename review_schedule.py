@@ -70,11 +70,12 @@ def next_state(previous, rating, now=None):
         raise ValueError("now must be timezone-aware")
     previous = current_state(previous)
     quality = RATINGS[rating]
-    ease = max(1.3, round(previous["ease"] + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02), 2))
+    ease = min(100, max(1.3, round(previous["ease"] + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02), 2)))
 
     if rating == "known":
         repetitions = previous["repetitions"] + 1
         interval = 1 if repetitions == 1 else 6 if repetitions == 2 else math.ceil(previous["interval_days"] * previous["ease"])
+        interval = min(interval, 36500)
         due = now + dt.timedelta(days=interval)
     elif rating == "fuzzy":
         repetitions = 0
@@ -102,8 +103,16 @@ def load_states(path=REVIEW_FILE):
 def save_states(states, path=REVIEW_FILE):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps({"words": states}, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.write_text(json.dumps({"schema_version":1, "epoch":load_epoch(path), "words": states}, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(temporary, path)
+
+
+def load_epoch(path=REVIEW_FILE):
+    try:
+        value = json.loads(path.read_text(encoding='utf-8')).get('epoch', 0)
+        return value if type(value) is int and value >= 0 else 0
+    except (OSError, ValueError, AttributeError):
+        return 0
 
 
 def review_queue(entries, states, now=None):

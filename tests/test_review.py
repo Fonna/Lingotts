@@ -17,6 +17,13 @@ NOW = dt.datetime(2026, 10, 1, 8, 0, tzinfo=dt.timezone.utc)
 
 
 class ScheduleTests(unittest.TestCase):
+    def test_imported_large_schedule_remains_gradeable_without_date_overflow(self):
+        old = dict(review.default_state(), repetitions=5, interval_days=100000000, ease=100)
+        state = review.next_state(old, 'known', NOW)
+        self.assertLessEqual(state['ease'],100)
+        self.assertIsNotNone(review.parse_due(state['due_at']))
+        self.assertLess(review.parse_due(state['due_at']).year,2200)
+
     def test_known_intervals_and_ease_progression(self):
         first = review.next_state(None, "known", NOW)
         self.assertEqual(first["interval_days"], 1)

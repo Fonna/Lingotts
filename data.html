@@ -1,9 +1,17 @@
 <!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>学习数据 · TED Learner</title><link rel="stylesheet" href="./assets/common.css">
-<style>.data-panel{padding:24px;max-width:800px}.data-panel h2{margin-top:0}.data-panel p{color:var(--text-secondary);line-height:1.8}.data-status{white-space:pre-wrap;overflow-wrap:anywhere;margin:18px 0}.data-stats{display:flex;gap:20px;flex-wrap:wrap;margin:20px 0;color:var(--text-secondary)}</style>
+<style>.data-panel{padding:24px;max-width:800px;margin-bottom:24px}.data-panel h2{margin-top:0}.data-panel p{color:var(--text-secondary);line-height:1.8}.data-status{white-space:pre-wrap;overflow-wrap:anywhere;margin:18px 0}.data-stats{display:flex;gap:20px;flex-wrap:wrap;margin:20px 0;color:var(--text-secondary)}.restore-form{display:grid;gap:16px}.restore-form label{display:grid;gap:8px}.restore-form input,.restore-form select{max-width:100%;min-width:0;font:inherit}.restore-form select{padding:10px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:8px}.restore-preview{white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;background:var(--accent-soft);border-radius:10px}.restore-form .check-row{display:flex;align-items:flex-start;gap:10px}.backup-actions{display:flex;gap:10px;flex-wrap:wrap}</style>
 </head><body><main class="page"><h1 class="page-title">学习数据</h1><p class="page-sub">将自己的学习记录保存为一份可带走的备份。</p>
 <section class="panel data-panel"><h2>导出学习备份</h2><p>包含生词、原句出处、复习安排，以及当前浏览器的续播位置。保存视频固定 ID 和历史别名，媒体文件与字幕请另行保存。</p>
 <div class="data-stats" id="dataStats"></div><button class="btn btn-primary" id="exportData">下载 JSON 备份</button>
-<div class="data-status" id="dataStatus" role="status" aria-live="polite"></div></section></main>
+<div class="data-status" id="dataStatus" role="status" aria-live="polite"></div></section>
+<section class="panel data-panel"><h2>恢复学习备份</h2><p>先检查备份内容，再确认恢复。写入前会自动保存当前生词、复习安排和续播位置的备份，方便恢复到原来的状态。</p>
+<div class="restore-form"><label>选择备份 JSON<input id="importFile" type="file" accept=".json,application/json"></label>
+<label>恢复方式<select id="restoreMode"><option value="merge">合并：保留本地记录，补充备份中的内容</option><option value="replace">覆盖：以备份替换当前学习数据</option></select></label>
+<p id="restoreRule">同词同视频同位置的生词保留本地记录，复习安排取较新一次评分；当前浏览器已有续播位置时保留。</p>
+<button class="btn" id="previewData" disabled>预览恢复内容</button><div id="restorePreview" class="restore-preview" hidden></div>
+<label class="check-row" id="replaceWarning" hidden><input type="checkbox" id="confirmReplace">我确认以备份替换当前生词、复习安排和续播位置。</label>
+<div class="backup-actions"><button class="btn btn-primary" id="restoreData" hidden>确认恢复</button><button class="btn" id="downloadBefore" hidden>下载恢复前备份</button><button class="btn" id="retryResume" hidden>重试保存续播位置</button></div>
+<div id="restoreStatus" class="data-status" role="status" aria-live="polite"></div></div></section></main>
 <script src="./assets/common.js"></script><script src="./assets/learning-data.js"></script></body></html>

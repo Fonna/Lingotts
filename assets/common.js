@@ -140,11 +140,11 @@
     getReview: function () {
       return request('/api/review');
     },
-    gradeReview: function (word, rating, version) {
+    gradeReview: function (word, rating, version, epoch) {
       return request('/api/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: word, rating: rating, version: version })
+        body: JSON.stringify({ word: word, rating: rating, version: version, epoch:epoch || 0 })
       });
     },
     dictionaryHtml: dictionaryHtml,
