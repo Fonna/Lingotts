@@ -16,6 +16,7 @@ DICTIONARY_FILE = BASE_DIR / "data" / "ecdict.sqlite"
 ANALYSIS_FILE = BASE_DIR / "data" / "analysis_cache.json"
 ARK_ENDPOINT = "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions"
 ARK_MODEL = "doubao-seed-2.1-turbo"
+ANALYSIS_TIMEOUT = 90
 WORD_RE = re.compile(r"[A-Za-z]+(?:['’-][A-Za-z]+)*\Z")
 
 
@@ -133,13 +134,14 @@ def analyze(word, sentence, cache_file=ANALYSIS_FILE, opener=None):
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 900,
         "temperature": 0.2,
+        "thinking": {"type": "disabled"},
     }, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(ARK_ENDPOINT, data=payload, headers={
         "Authorization": "Bearer " + api_key,
         "Content-Type": "application/json",
     })
     try:
-        with (opener or urllib.request.urlopen)(request, timeout=45) as response:
+        with (opener or urllib.request.urlopen)(request, timeout=ANALYSIS_TIMEOUT) as response:
             body = response.read(64 * 1024)
         content = json.loads(body)["choices"][0]["message"]["content"]
         result = parse_analysis(content)
@@ -148,11 +150,20 @@ def analyze(word, sentence, cache_file=ANALYSIS_FILE, opener=None):
             raise AnalysisError("解析服务请求过于频繁或额度已用完，请稍后重试", 503) from exc
         if exc.code in (401, 403):
             raise AnalysisError("火山方舟密钥或权限无效，请检查 ARK_API_KEY", 503) from exc
-        raise AnalysisError("解析服务暂时不可用，请稍后重试") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise AnalysisError("解析服务暂时不可用，请稍后重试") from exc
+        if exc.code in (400, 404):
+            raise AnalysisError(f"火山方舟请求或模型配置不受支持（HTTP {exc.code}），请检查模型与接口地址", 503) from exc
+        raise AnalysisError(f"火山方舟返回 HTTP {exc.code}，请稍后重试") from exc
+    except TimeoutError as exc:
+        raise AnalysisError(f"火山方舟解析请求超时（{ANALYSIS_TIMEOUT} 秒），尚未生成可保存的结果，请稍后重试", 504) from exc
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            raise AnalysisError(f"火山方舟解析请求超时（{ANALYSIS_TIMEOUT} 秒），请稍后重试", 504) from exc
+        raise AnalysisError("无法连接火山方舟，请检查网络或代理后重试", 503) from exc
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
         raise AnalysisError("解析服务返回了无效数据，请重试") from exc
     cache[key] = result
-    save_cache(cache, cache_file)
+    try:
+        save_cache(cache, cache_file)
+    except OSError as exc:
+        raise AnalysisError("解析已生成，但本地缓存保存失败，请检查 data 目录权限和磁盘空间", 503) from exc
     return result, False

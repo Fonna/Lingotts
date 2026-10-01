@@ -45,7 +45,8 @@ class WordLookupTests(unittest.TestCase):
 
         def opener(request, timeout):
             calls.append(json.loads(request.data))
-            self.assertEqual(timeout, 45)
+            self.assertEqual(timeout, word_lookup.ANALYSIS_TIMEOUT)
+            self.assertEqual(json.loads(request.data)['thinking'],{'type':'disabled'})
             return Response()
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"ARK_API_KEY": "test-key"}):
@@ -86,6 +87,20 @@ class WordLookupTests(unittest.TestCase):
                 word_lookup.analyze("word", "sentence", Path(directory) / "cache.json", limited)
             self.assertEqual(error.exception.status, 503)
             self.assertIn("过于频繁", str(error.exception))
+
+    def test_timeout_network_and_model_errors_are_distinct_and_not_cached(self):
+        cases = [(TimeoutError('timed out'),504,'超时'),
+                 (urllib.error.URLError(TimeoutError('timed out')),504,'超时'),
+                 (urllib.error.URLError('connection refused'),503,'网络或代理'),
+                 (urllib.error.HTTPError('https://example.com',404,'not found',{},None),503,'模型配置'),
+                 (urllib.error.HTTPError('https://example.com',500,'server error',{},None),502,'HTTP 500')]
+        with tempfile.TemporaryDirectory() as directory,patch.dict(os.environ,{'ARK_API_KEY':'test-key'}):
+            cache=Path(directory)/'cache.json'
+            for failure,status,message in cases:
+                with self.subTest(error=type(failure).__name__),patch.object(word_lookup.urllib.request,'urlopen',side_effect=failure),self.assertRaises(word_lookup.AnalysisError) as error:
+                    word_lookup.analyze('fahrenheit','The temperature is Fahrenheit.',cache)
+                self.assertEqual(error.exception.status,status); self.assertIn(message,str(error.exception))
+                self.assertFalse(cache.exists())
 
 
 class DictionaryApiTests(unittest.TestCase):
