@@ -75,6 +75,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # silent
 
+    def end_headers(self):
+        path = urllib.parse.unquote(urllib.parse.urlparse(self.path).path)
+        if not path.startswith('/api/') and (path == '/' or Path(path).suffix.lower() in ('.html', '.js', '.css')):
+            # Keep pages and shared helpers in sync after local development updates.
+            self.send_header('Cache-Control', 'no-cache')
+        super().end_headers()
+
     # ----- API helpers -----
 
     def send_json(self, status, obj):
